@@ -1,0 +1,11 @@
+{
+  "id": "websiteflyer-01",
+  "name": "Website Flyer 01",
+  "type": "flyer",
+  "layers": [
+    { "type": "background", "value": "linear-gradient(90deg, #43C6AC 0%, #191654 100%)" },
+    { "type": "image", "src": "/components/laptop.png", "x": 30, "y": 40, "width": 60, "height": 40, "z": 2 },
+    { "type": "text", "value": "Visit Our Website!", "x": 20, "y": 90, "fontSize": 18, "color": "#fff", "z": 3 },
+    { "type": "qr", "value": "https://xhenvolt.com", "x": 80, "y": 100, "size": 20, "z": 4 }
+  ]
+}

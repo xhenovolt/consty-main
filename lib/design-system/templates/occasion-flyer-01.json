@@ -1,0 +1,12 @@
+{
+  "id": "occasion-flyer-01",
+  "name": "Occasion Flyer 01",
+  "type": "flyer",
+  "layers": [
+    { "type": "background", "value": "linear-gradient(120deg, #F9D423 0%, #FF4E50 100%)" },
+    { "type": "image", "src": "/components/standing-person.png", "x": 30, "y": 30, "width": 60, "height": 90, "z": 2 },
+    { "type": "shape", "shapeId": "blob_01", "x": 10, "y": 80, "width": 100, "height": 30, "opacity": 0.4, "z": 1 },
+    { "type": "text", "value": "Special Occasion!", "x": 20, "y": 120, "fontSize": 20, "color": "#fff", "z": 3 },
+    { "type": "qr", "value": "https://xhenvolt.com", "x": 80, "y": 130, "size": 20, "z": 4 }
+  ]
+}

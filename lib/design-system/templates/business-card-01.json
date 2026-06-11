@@ -1,0 +1,12 @@
+{
+  "id": "business-card-01",
+  "name": "Business Card 01",
+  "type": "business_card",
+  "layers": [
+    { "type": "background", "value": "linear-gradient(90deg, #fff 0%, #46DC88 100%)" },
+    { "type": "image", "src": "/components/logo-xhe.png", "x": 10, "y": 10, "width": 30, "height": 30, "z": 2 },
+    { "type": "text", "value": "Your Name", "x": 50, "y": 20, "fontSize": 14, "color": "#222", "z": 3 },
+    { "type": "text", "value": "Position", "x": 50, "y": 35, "fontSize": 12, "color": "#555", "z": 3 },
+    { "type": "qr", "value": "https://xhenvolt.com", "x": 80, "y": 10, "size": 20, "z": 4 }
+  ]
+}

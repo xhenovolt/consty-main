@@ -1,0 +1,332 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  /* ── Core Semantic Tokens ── */
+  --color-background: rgb(var(--background));
+  --color-foreground: rgb(var(--foreground));
+  --color-card: rgb(var(--card));
+  --color-card-foreground: rgb(var(--card-foreground));
+  --color-popover: rgb(var(--popover));
+  --color-popover-foreground: rgb(var(--popover-foreground));
+  --color-primary: rgb(var(--primary));
+  --color-primary-foreground: rgb(var(--primary-foreground));
+  --color-secondary: rgb(var(--secondary));
+  --color-secondary-foreground: rgb(var(--secondary-foreground));
+  --color-muted: rgb(var(--muted));
+  --color-muted-foreground: rgb(var(--muted-foreground));
+  --color-accent: rgb(var(--accent));
+  --color-accent-foreground: rgb(var(--accent-foreground));
+  --color-destructive: rgb(var(--destructive));
+  --color-border: rgb(var(--border));
+  --color-input: rgb(var(--input));
+  --color-ring: rgb(var(--ring));
+  /* ── Chart ── */
+  --color-chart-1: rgb(var(--chart-1));
+  --color-chart-2: rgb(var(--chart-2));
+  --color-chart-3: rgb(var(--chart-3));
+  --color-chart-4: rgb(var(--chart-4));
+  --color-chart-5: rgb(var(--chart-5));
+  /* ── Fonts & Radius ── */
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+}
+
+:root {
+  --radius: 0.625rem;
+  
+  /* Semantic Colors */
+  /* Ocean / Trust Palette */
+  --color-ocean-darkest: #03045e;
+  --color-ocean-dark: #0077b6;
+  --color-ocean-main: #00b4d8;
+  --color-ocean-light: #90e0ef;
+  --color-ocean-lightest: #caf0f8;
+  
+  /* Royal Purple Palette */
+  --color-purple-darkest: #10002b;
+  --color-purple-dark: #240046;
+  --color-purple-medium-dark: #3c096c;
+  --color-purple-medium: #5a189a;
+  --color-purple-bright: #7b2cbf;
+  --color-purple-light: #9d4edd;
+  --color-purple-lighter: #c77dff;
+  --color-purple-lightest: #e0aaff;
+  
+  /* Power / Authority Palette */
+  --color-power-darkest: #03071e;
+  --color-power-dark: #370617;
+  --color-power-medium-dark: #6a040f;
+  --color-power-medium: #9d0208;
+  --color-power-bright: #d00000;
+  --color-power-accent: #dc2f02;
+  --color-power-light: #e85d04;
+  --color-power-lighter: #f48c06;
+  --color-power-warning: #faa307;
+  --color-power-lightest: #ffba08;
+  
+  /* ── Light Theme: Raw RGB channel values (r g b) ── */
+  --background:         255 255 255;
+  --foreground:         17 24 39;
+  --card:               255 255 255;
+  --card-foreground:    17 24 39;
+  --popover:            255 255 255;
+  --popover-foreground: 17 24 39;
+  --primary:            59 130 246;
+  --primary-foreground: 255 255 255;
+  --secondary:          243 244 246;
+  --secondary-foreground: 17 24 39;
+  --muted:              243 244 246;
+  --muted-foreground:   107 114 128;
+  --accent:             239 246 255;
+  --accent-foreground:  29 78 216;
+  --destructive:        239 68 68;
+  --border:             229 231 235;
+  --input:              229 231 235;
+  --ring:               59 130 246;
+  --chart-1:            249 115 22;
+  --chart-2:            20 184 166;
+  --chart-3:            59 130 246;
+  --chart-4:            168 85 247;
+  --chart-5:            234 179 8;
+}
+
+.dark {
+  /* ── Dark Theme: Raw RGB channel values (r g b) ── */
+  --background:         10 10 10;
+  --foreground:         229 231 235;
+  --card:               24 24 27;
+  --card-foreground:    229 231 235;
+  --popover:            24 24 27;
+  --popover-foreground: 229 231 235;
+  --primary:            96 165 250;
+  --primary-foreground: 10 10 10;
+  --secondary:          39 39 42;
+  --secondary-foreground: 229 231 235;
+  --muted:              39 39 42;
+  --muted-foreground:   161 161 170;
+  --accent:             30 58 138;
+  --accent-foreground:  147 197 253;
+  --destructive:        248 113 113;
+  --border:             63 63 70;
+  --input:              63 63 70;
+  --ring:               96 165 250;
+  --chart-1:            251 146 60;
+  --chart-2:            52 211 153;
+  --chart-3:            96 165 250;
+  --chart-4:            196 132 252;
+  --chart-5:            250 204 21;
+}
+
+@layer base {
+  * {
+    @apply border-border outline-ring/50;
+  }
+  body {
+    @apply bg-background text-foreground;
+  }
+}
+
+/* ============================================================================
+   CONSTY THEME SYSTEM - Custom CSS Variables
+   ============================================================================ */
+:root {
+  --theme-primary: #3b82f6;
+  --theme-sidebar: #0f172a;
+  --theme-navbar: #0f172a;
+  --theme-accent: #6366f1;
+  --theme-content-bg: #f8fafc;
+}
+
+/* ============================================================================
+   ANIMATIONS - Auth Background & UI Micro-interactions
+   ============================================================================ */
+@keyframes float-slow {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  33% { transform: translate(30px, -30px) scale(1.05); }
+  66% { transform: translate(-20px, 20px) scale(0.95); }
+}
+@keyframes float-medium {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-40px, 30px) scale(1.08); }
+}
+@keyframes float-reverse {
+  0%, 100% { transform: translate(-50%, -50%) scale(1); }
+  50% { transform: translate(-50%, -50%) scale(1.1); }
+}
+@keyframes particle-drift-1 {
+  0%, 100% { transform: translate(0, 0); opacity: 0.4; }
+  50% { transform: translate(20px, -30px); opacity: 0.8; }
+}
+@keyframes particle-drift-2 {
+  0%, 100% { transform: translate(0, 0); opacity: 0.3; }
+  50% { transform: translate(-30px, 20px); opacity: 0.7; }
+}
+@keyframes particle-drift-3 {
+  0%, 100% { transform: translate(0, 0); opacity: 0.35; }
+  50% { transform: translate(15px, 25px); opacity: 0.75; }
+}
+@keyframes particle-drift-4 {
+  0%, 100% { transform: translate(0, 0); opacity: 0.3; }
+  50% { transform: translate(-20px, -15px); opacity: 0.6; }
+}
+@keyframes particle-drift-5 {
+  0%, 100% { transform: translate(0, 0); opacity: 0.4; }
+  50% { transform: translate(25px, 20px); opacity: 0.7; }
+}
+
+.animate-float-slow { animation: float-slow 20s ease-in-out infinite; }
+.animate-float-medium { animation: float-medium 15s ease-in-out infinite; }
+.animate-float-reverse { animation: float-reverse 25s ease-in-out infinite; }
+.animate-particle-1 { animation: particle-drift-1 8s ease-in-out infinite; }
+.animate-particle-2 { animation: particle-drift-2 10s ease-in-out infinite; }
+.animate-particle-3 { animation: particle-drift-3 12s ease-in-out infinite; }
+.animate-particle-4 { animation: particle-drift-4 9s ease-in-out infinite; }
+.animate-particle-5 { animation: particle-drift-5 11s ease-in-out infinite; }
+
+/* Splash screen animations */
+@keyframes fadeInUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+/* Smooth transitions for theme changes */
+.theme-transition {
+  transition: background-color 0.3s ease, color 0.3s ease, border-color 0.3s ease;
+}
+
+/* Scrollbar styling */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(100, 100, 100, 0.3);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(100, 100, 100, 0.5);
+}
+
+/* ============================================================================
+   TYPOGRAPHY SYSTEM - CSS variable pass-throughs
+   ============================================================================ */
+:root {
+  /* Sidebar / Navbar semantic tokens (overridden dynamically by ThemeProvider) */
+  --sidebar-text:       #111827;
+  --sidebar-muted:      #6b7280;
+  --sidebar-hover:      rgba(0,0,0,0.05);
+  --sidebar-active:     rgba(0,0,0,0.08);
+  --sidebar-active-txt: #111827;
+  --sidebar-border:     rgba(0,0,0,0.08);
+  --sidebar-icon-act:   #3b82f6;
+  --navbar-text:        #111827;
+  --navbar-muted:       #6b7280;
+  --navbar-border:      rgba(0,0,0,0.08);
+  --footer-bg:          #f8fafc;
+  --footer-text:        #6b7280;
+}
+.dark {
+  --sidebar-text:       #f1f5f9;
+  --sidebar-muted:      #94a3b8;
+  --sidebar-hover:      rgba(255,255,255,0.06);
+  --sidebar-active:     rgba(255,255,255,0.10);
+  --sidebar-active-txt: #ffffff;
+  --sidebar-border:     rgba(255,255,255,0.06);
+  --sidebar-icon-act:   #60a5fa;
+  --navbar-text:        #ffffff;
+  --navbar-muted:       #94a3b8;
+  --navbar-border:      rgba(255,255,255,0.06);
+  --footer-bg:          #0f172a;
+  --footer-text:        #94a3b8;
+}
+:root {
+  --font-base:          var(--font-geist-sans), system-ui, sans-serif;
+  --base-font-size:     1rem;
+  --base-font-weight:   400;
+  --base-line-height:   1.6;
+}
+
+body {
+  font-family:  var(--font-base);
+  font-size:    var(--base-font-size);
+  font-weight:  var(--base-font-weight);
+  line-height:  var(--base-line-height);
+}
+
+/* ============================================================================
+   GLASSMORPHISM SYSTEM
+   ============================================================================ */
+
+/* Enabled when <html class="glass-mode"> */
+.glass-mode .glass-card,
+.glass-mode [data-glass="true"] {
+  background:           rgba(255, 255, 255, 0.06) !important;
+  backdrop-filter:      blur(16px) saturate(180%) !important;
+  -webkit-backdrop-filter: blur(16px) saturate(180%) !important;
+  border:               1px solid rgba(255, 255, 255, 0.12) !important;
+  box-shadow:           0 8px 32px rgba(0, 0, 0, 0.3);
+}
+
+/* Light-mode glass adjustments */
+:root:not(.dark) .glass-mode .glass-card,
+:root:not(.dark) .glass-mode [data-glass="true"] {
+  background:           rgba(255, 255, 255, 0.55) !important;
+  border:               1px solid rgba(255, 255, 255, 0.7) !important;
+  box-shadow:           0 8px 32px rgba(0, 0, 0, 0.08);
+}
+
+/* Utility class for one-off glass elements */
+.glass {
+  background:           rgba(255, 255, 255, 0.06);
+  backdrop-filter:      blur(12px) saturate(150%);
+  -webkit-backdrop-filter: blur(12px) saturate(150%);
+  border:               1px solid rgba(255, 255, 255, 0.1);
+}
+:root:not(.dark) .glass {
+  background:           rgba(255, 255, 255, 0.5);
+  border:               1px solid rgba(255, 255, 255, 0.6);
+}
+
+/* ── Mobile Responsiveness Utilities ── */
+
+/* Ensure modals don't overflow on mobile */
+@media (max-width: 640px) {
+  .swal2-popup {
+    width: 92vw !important;
+    max-width: 92vw !important;
+    padding: 1rem !important;
+    font-size: 0.875rem !important;
+  }
+  
+  /* Mobile-friendly scrollable containers */
+  .mobile-scroll-x {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: thin;
+  }
+}
+
+/* Hide scrollbar on mobile for horizontal scroll containers */
+@media (max-width: 768px) {
+  .hide-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+  .hide-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}

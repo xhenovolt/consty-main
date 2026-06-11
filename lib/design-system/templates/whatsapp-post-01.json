@@ -1,0 +1,11 @@
+{
+  "id": "whatsapp-post-01",
+  "name": "WhatsApp Post 01",
+  "type": "whatsapp_post",
+  "layers": [
+    { "type": "background", "value": "linear-gradient(135deg, #25D366 0%, #128C7E 100%)" },
+    { "type": "image", "src": "/components/iphone-no-background.png", "x": 40, "y": 30, "width": 40, "height": 80, "z": 2 },
+    { "type": "text", "value": "Chat with us on WhatsApp!", "x": 10, "y": 120, "fontSize": 16, "color": "#fff", "z": 3 },
+    { "type": "qr", "value": "https://xhenvolt.com", "x": 80, "y": 130, "size": 20, "z": 4 }
+  ]
+}
