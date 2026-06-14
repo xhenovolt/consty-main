@@ -111,10 +111,10 @@ export const menuItems = [
     label: 'Projects',
     icon: Briefcase,
     category: 'sections',
-    module: 'deals',
+    module: 'projects',
     submenu: [
-      { label: 'All Projects', href: '/app/deals', description: 'Active, completed, and archived project work', permission: 'deals.view' },
-      { label: 'New Project', href: '/app/deals/new', description: 'Create a new project record', permission: 'deals.create' },
+      { label: 'All Projects', href: '/app/projects', description: 'Plan, govern and execute project work', permission: 'projects.view' },
+      { label: 'New Project', href: '/app/projects?new=1', description: 'Create a new project', permission: 'projects.create' },
       { label: 'Site Tasks', href: '/app/obligations', description: 'Track obligations, deliverables, and site actions', permission: 'obligations.view' },
       { label: 'Payments', href: '/app/payments', description: 'Client payment tracking', permission: 'payments.view' },
       { label: 'Invoices', href: '/app/invoices', description: 'Invoices, certificates, and billing PDFs', permission: 'invoices.view' },
@@ -321,7 +321,7 @@ export const menuItems = [
  */
 export const quickAccessLinks = [
   { id: 'dashboard', label: 'Dashboard', icon: Home, href: '/app/dashboard', permission: 'dashboard.view' },
-  { id: 'projects', label: 'Projects', icon: Briefcase, href: '/app/deals', permission: 'deals.view' },
+  { id: 'projects', label: 'Projects', icon: Briefcase, href: '/app/projects', permission: 'projects.view' },
   { id: 'tasks', label: 'Site Tasks', icon: ClipboardCheck, href: '/app/obligations', permission: 'obligations.view' },
   { id: 'finance', label: 'Finance', icon: DollarSign, href: '/app/finance', permission: 'finance.view' },
 ];

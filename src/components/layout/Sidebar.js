@@ -344,7 +344,7 @@ export default function Sidebar() {
                 Create new
               </div>
               {[
-                { label: 'New Project', icon: Target, href: '/app/deals/new', desc: 'Start a new project' },
+                { label: 'New Project', icon: Target, href: '/app/projects?new=1', desc: 'Start a new project' },
                 { label: 'Log Payment', icon: Wallet, href: '/app/payments?new=1', desc: 'Record a client payment' },
                 { label: 'Follow-up', icon: FileText, href: '/app/followups?new=1', desc: 'Add a note or follow-up' },
               ].map(item => (
