@@ -57,22 +57,21 @@ export async function POST(request) {
 
     if (!name) return NextResponse.json({ success: false, error: 'name is required' }, { status: 400 });
     const projectCode = (code && code.trim()) || `PRJ-${Date.now().toString(36).toUpperCase()}`;
+    // Creator (or named manager) becomes the project manager and retains access.
+    const managerUser = manager_id || auth.userId;
 
     const result = await query(
       `INSERT INTO projects
          (code, name, description, category, type, client_id, governor_id, manager_id,
           priority, currency, location, planned_start, planned_end, status, created_by)
-       VALUES ($1,$2,$3,$4,COALESCE($5,'construction'),$6,$7,COALESCE($8,$15),
-               COALESCE($9,'medium'),COALESCE($10,'UGX'),$11,$12,$13,'planning',$15)
+       VALUES ($1,$2,$3,$4,COALESCE($5,'construction'),$6::uuid,$7::uuid,$8::uuid,
+               COALESCE($9,'medium'),COALESCE($10,'UGX'),$11,$12::date,$13::date,'planning',$14::uuid)
        RETURNING *`,
       [projectCode, name, description || null, category || null, type || null, client_id || null,
-       governor_id || null, manager_id || null, priority || null, currency || null, location || null,
-       planned_start || null, planned_end || null, null, auth.userId]
+       governor_id || null, managerUser, priority || null, currency || null, location || null,
+       planned_start || null, planned_end || null, auth.userId]
     );
     const project = result.rows[0];
-
-    // Make the creator (or named manager) a project manager so they retain access.
-    const managerUser = manager_id || auth.userId;
     await query(
       `INSERT INTO project_members (project_id, user_id, project_role, created_by)
        VALUES ($1,$2,'manager',$3)
