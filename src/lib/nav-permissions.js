@@ -21,12 +21,21 @@
  *   - `minHierarchy` is enforced on both parent and sub-items.
  */
 
-export function filterMenuByPermissions(menuItems, ctx) {
-  const { user, permLoading, hierarchyLevel, hasPermission, hasModuleAccess } = ctx;
-  if (permLoading || !user) return [];
-  if (user.is_superadmin) return menuItems;
+import { isModuleEnabled } from '@/lib/feature-flags';
 
-  return menuItems.reduce((acc, item) => {
+export function filterMenuByPermissions(menuItems, ctx) {
+  const { user, permLoading, hierarchyLevel, hasPermission, hasModuleAccess, flags } = ctx;
+  if (permLoading || !user) return [];
+
+  // Module feature flags hide inherited modules for everyone, superadmin included.
+  const flagged = menuItems.filter(item => isModuleEnabled(item.featureFlag, flags));
+  if (user.is_superadmin) return dropEmptyHeaders(flagged);
+
+  const filtered = flagged.reduce((acc, item) => {
+    // Group headers carry no permission of their own; they pass through here
+    // and are pruned afterwards if their whole group ended up hidden.
+    if (item.kind === 'header') { acc.push(item); return acc; }
+
     if (item.minHierarchy && hierarchyLevel > item.minHierarchy) return acc;
 
     if (item.submenu && item.submenu.length > 0) {
@@ -46,4 +55,18 @@ export function filterMenuByPermissions(menuItems, ctx) {
     acc.push(item);
     return acc;
   }, []);
+
+  return dropEmptyHeaders(filtered);
+}
+
+/**
+ * Remove group headers that have no visible items beneath them (i.e. the next
+ * entry is another header or the end of the list).
+ */
+function dropEmptyHeaders(items) {
+  return items.filter((item, i) => {
+    if (item.kind !== 'header') return true;
+    const next = items[i + 1];
+    return next && next.kind !== 'header';
+  });
 }

@@ -48,6 +48,7 @@ yarn-error.log*
 /sidebar-links.txt
 /*.md
 !/README.md
+!/CONSTY_DOMAIN_ARCHITECTURE.md
 
 # database dumps and backups
 Backup/
@@ -64,3 +65,6 @@ database/dumps/
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# DB backups (may contain data)
+/database/backups/

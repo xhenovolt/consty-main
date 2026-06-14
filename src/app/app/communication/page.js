@@ -40,7 +40,6 @@ export default function CommunicationPage() {
       toast.error(chat.error);
       chat.clearError();
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [chat.error]);
 
   const handleCreateConversation = useCallback(

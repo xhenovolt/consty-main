@@ -86,5 +86,3 @@ export function EmployeeAccountModal({ isOpen, onClose, staffList, onSuccess }) 
     </Modal>
   );
 }
-  );
-}

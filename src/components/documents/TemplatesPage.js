@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { Plus, Search, Edit, Eye, Trash2, Save, X, Bold, Italic, List, Link } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Textarea } from '@/components/ui/textarea';
-import { ResponsiveTable } from '@/components/ui/ResponsiveTable';
+import { ResponsiveTable, MobileCardTable } from '@/components/ui/ResponsiveTable';
 
 export default function TemplatesPage() {
   const [templates, setTemplates] = useState([]);

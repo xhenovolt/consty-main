@@ -28,7 +28,7 @@ export async function POST(req) {
     }
     
     // Verify user is admin of conversation
-    const admin = await db.query(
+    const admin = await query(
       `SELECT role FROM conversation_participants
        WHERE conversation_id = $1 AND user_id = $2 AND is_active = TRUE`,
       [conversationId, userId]

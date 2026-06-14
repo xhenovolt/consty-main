@@ -67,11 +67,12 @@ export default function Sidebar() {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [expandedSections, setExpandedSections] = useState({
-    Growth: false,
-    Investments: false,
+    'Project Pipeline': true,
+    Projects: true,
     Finance: true,
-    Systems: false,
+    'Sites & Systems': false,
     Operations: false,
+    Intelligence: false,
     Admin: false,
     'DRAIS Control': false,
   });
@@ -174,6 +175,20 @@ export default function Sidebar() {
       <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-1 scrollbar-thin">
         <AnimatePresence>
           {displayMenuItems.map((item) => {
+            if (item.kind === 'header') {
+              if (isCollapsed) {
+                return <div key={`h-${item.label}`} className="my-2 mx-3" style={{ borderTop: '1px solid var(--sidebar-border)' }} />;
+              }
+              return (
+                <div
+                  key={`h-${item.label}`}
+                  className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider select-none"
+                  style={{ color: 'var(--sidebar-muted)' }}
+                >
+                  {item.label}
+                </div>
+              );
+            }
             const Icon = item.icon;
             const hasSubmenu = item.submenu && item.submenu.length > 0;
             const isExpanded = expandedSections[item.label];
@@ -329,9 +344,9 @@ export default function Sidebar() {
                 Create new
               </div>
               {[
-                { label: 'Prospect', icon: UserPlus, href: '/app/prospects?new=1', desc: 'Add a new prospect' },
-                { label: 'Transaction', icon: TrendingUp, href: '/app/finance?new=1', desc: 'Log a transaction' },
-                { label: 'Note', icon: FileText, href: '/app/followups?new=1', desc: 'Add a note or follow-up' },
+                { label: 'New Project', icon: Target, href: '/app/deals/new', desc: 'Start a new project' },
+                { label: 'Log Payment', icon: Wallet, href: '/app/payments?new=1', desc: 'Record a client payment' },
+                { label: 'Follow-up', icon: FileText, href: '/app/followups?new=1', desc: 'Add a note or follow-up' },
               ].map(item => (
                 <Link
                   key={item.label}

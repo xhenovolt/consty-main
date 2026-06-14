@@ -3,7 +3,8 @@
  * Helper functions for formatting and displaying sales data
  */
 
-export { formatCurrency } from '@/lib/format-currency';
+import { formatCurrency } from '@/lib/format-currency';
+export { formatCurrency };
 
 /**
  * Get status color class

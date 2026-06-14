@@ -6,6 +6,32 @@ import { fetchWithAuth } from '@/lib/fetch-client';
 import { useToast } from '@/components/ui/Toast';
 import { PayoutModal } from '@/components/modals/PayoutModal';
 
+// Tailwind class map (this page predates the app-wide Tailwind convention and
+// referenced a CSS module that was never present, which crashed the route).
+const styles = {
+  container: 'p-6 max-w-7xl mx-auto',
+  header: 'mb-6',
+  titleSection: 'flex flex-col gap-1',
+  icon: 'w-7 h-7 text-primary',
+  tabs: 'flex gap-2 border-b border-border mb-6',
+  tab: 'flex items-center gap-2 px-4 py-2 text-sm font-medium text-muted-foreground hover:text-foreground border-b-2 border-transparent transition',
+  tabActive: 'flex items-center gap-2 px-4 py-2 text-sm font-medium text-foreground border-b-2 border-primary transition',
+  tabContent: 'space-y-6',
+  section: 'bg-card border border-border rounded-xl p-5',
+  sectionHeader: 'flex items-center justify-between mb-4',
+  loading: 'text-sm text-muted-foreground py-8 text-center',
+  empty: 'text-sm text-muted-foreground py-8 text-center',
+  tableWrapper: 'overflow-x-auto',
+  table: 'w-full text-sm text-left border-collapse [&_th]:py-2 [&_th]:px-3 [&_th]:font-medium [&_th]:text-muted-foreground [&_td]:py-2 [&_td]:px-3 [&_tr]:border-b [&_tr]:border-border',
+  badge: 'inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium',
+  success: 'bg-green-100 text-green-700 dark:bg-green-900/30 dark:text-green-400',
+  warning: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-400',
+  error: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-400',
+  info: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-400',
+  btn: 'inline-flex items-center gap-2 px-3 py-2 text-sm font-medium bg-primary text-primary-foreground rounded-lg hover:bg-primary/90 transition',
+  actionBtn: 'inline-flex items-center justify-center p-1.5 text-muted-foreground hover:text-foreground hover:bg-muted rounded-md transition',
+};
+
 export default function HRPage() {
   const [activeTab, setActiveTab] = useState('employees');
   const [staff, setStaff] = useState([]);

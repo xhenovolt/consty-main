@@ -177,8 +177,8 @@ export async function POST(request, { params }) {
           const draisConn = draisConnResult.rows[0];
 
           try {
-            const drais_key = decrypt(draisConn.api_key_encrypted);
-            const drais_secret = decrypt(draisConn.api_secret_encrypted);
+            const drais_key = decryptSecret(draisConn.api_key_encrypted);
+            const drais_secret = decryptSecret(draisConn.api_secret_encrypted);
 
             // Call DRAIS API to sync new keys
             const syncResponse = await fetch(

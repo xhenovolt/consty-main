@@ -48,6 +48,7 @@ export async function GET(request) {
 export async function POST(request) {
   const perm = await requirePermission(request, 'clients.create');
   if (perm instanceof NextResponse) return perm;
+  const { auth } = perm;
   try {
     const body = await request.json();
     const { company_name, contact_name, email, phone, website, industry, billing_address, tax_id, payment_terms, preferred_currency, notes, tags } = body;

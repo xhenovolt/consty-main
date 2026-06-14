@@ -140,7 +140,6 @@ export default function TemplateDetailPage({ params }) {
     if (showGen && genForm.document_type === 'other') {
       setGenForm(p => ({ ...p, document_type: suggestedType }));
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [showGen, suggestedType]);
 
   const generate = async () => {

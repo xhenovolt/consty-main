@@ -178,6 +178,16 @@ export function MobileDrawer({ isOpen, onClose, user }) {
         <nav className="flex-1 overflow-y-auto py-4 px-2 space-y-1">
           <AnimatePresence>
             {navMenuItems.map((item, index) => {
+              if (item.kind === 'header') {
+                return (
+                  <div
+                    key={`h-${item.label}`}
+                    className="px-3 pt-4 pb-1 text-[10px] font-semibold uppercase tracking-wider text-muted-foreground select-none"
+                  >
+                    {item.label}
+                  </div>
+                );
+              }
               const Icon = item.icon;
               const hasSubmenu = item.submenu && item.submenu.length > 0;
               const isExpanded = expandedSections[item.label];

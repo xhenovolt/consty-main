@@ -185,7 +185,7 @@ export default function ItemsPage() {
   const deleteItem = async (id) => {
     if (!await confirmDelete('item')) return;
     await fetchWithAuth(`/api/items?id=${id}`, { method: 'DELETE' });
-    toast.success('Item deleted');
+    addToast('Item deleted', 'success');
     fetchItems();
   };
 

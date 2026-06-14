@@ -9,7 +9,11 @@
     "lint": "eslint .",
     "build": "next build",
     "start": "next start",
-    "check:contrast": "node --input-type=module < scripts/check-contrast.js"
+    "check:contrast": "node --input-type=module < scripts/check-contrast.js",
+    "db:backup": "node scripts/db-backup.mjs",
+    "db:migrate": "node scripts/migrate.mjs",
+    "db:verify": "node scripts/verify-schema.mjs",
+    "test:db": "node scripts/test-db.mjs"
   },
   "dependencies": {
     "@simplewebauthn/browser": "^13.3.0",
