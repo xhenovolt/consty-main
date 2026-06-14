@@ -95,7 +95,7 @@ export default function ProjectDetailPage() {
 
         {/* Tabs */}
         <div className="flex gap-1 border-b border-border mb-5">
-          {[['overview', 'Overview', LayoutDashboard], ['work', 'Work', ListTree], ['team', 'Team', Users]].map(([key, label, Icon]) => (
+          {[['overview', 'Overview', LayoutDashboard], ['work', 'Work', ListTree], ['budget', 'Budget', Wallet], ['team', 'Team', Users]].map(([key, label, Icon]) => (
             <button key={key} onClick={() => setTab(key)}
               className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
                 tab === key ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
@@ -108,6 +108,9 @@ export default function ProjectDetailPage() {
         {tab === 'work' && (
           <WorkTab items={items} byParent={byParent} canEdit={canEdit} projectId={id}
             users={users} onAdd={(parent) => setAddParent(parent)} onChanged={load} toast={toast} />
+        )}
+        {tab === 'budget' && (
+          <BudgetTab projectId={id} canEdit={canEdit} currency={project.currency} toast={toast} onChanged={load} />
         )}
         {tab === 'team' && (
           <TeamTab project={project} users={users} canManageMembers={canManageMembers}
@@ -307,6 +310,148 @@ function AddNodeModal({ projectId, parent, users, onClose, onAdded, toast }) {
         </div>
       </div>
     </Modal>
+  );
+}
+
+const BUDGET_STATUS_STYLE = {
+  surplus: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+  balanced: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  tight: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  deficit: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+  frozen: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300',
+  overrun: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+};
+const FUNDING_TYPES = ['company_wallet','client_deposit','external_funder','loan','grant','donor','retained_earnings','manual_external'];
+
+function BudgetTab({ projectId, canEdit, currency, toast, onChanged }) {
+  const [data, setData] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [alloc, setAlloc] = useState('');
+  const [forecast, setForecast] = useState('');
+  const [frozen, setFrozen] = useState(false);
+  const [fund, setFund] = useState({ source_type: 'company_wallet', name: '', amount: '', status: 'pledged' });
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/projects/${projectId}/budget`);
+      const json = await res.json();
+      if (json.success) {
+        setData(json.data);
+        setAlloc(json.data.budget?.allocated_amount ?? '');
+        setForecast(json.data.budget?.forecast_amount ?? '');
+        setFrozen(!!json.data.budget?.is_frozen);
+      }
+    } finally { setLoading(false); }
+  }, [projectId]);
+  useEffect(() => { load(); }, [load]);
+
+  const money = (v) => `${currency} ${Number(v || 0).toLocaleString()}`;
+
+  const saveBudget = async () => {
+    const res = await fetchWithAuth(`/api/projects/${projectId}/budget`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ allocated_amount: Number(alloc) || 0, forecast_amount: forecast === '' ? null : Number(forecast), is_frozen: frozen, currency }),
+    });
+    const json = await res.json();
+    if (json.success) { toast.success?.('Budget saved'); load(); onChanged?.(); } else toast.error?.(json.error || 'Failed');
+  };
+  const addFunding = async () => {
+    const res = await fetchWithAuth(`/api/projects/${projectId}/funding`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...fund, amount: Number(fund.amount) || 0, currency }),
+    });
+    const json = await res.json();
+    if (json.success) { toast.success?.('Funding source added'); setFund({ source_type: 'company_wallet', name: '', amount: '', status: 'pledged' }); load(); }
+    else toast.error?.(json.error || 'Failed');
+  };
+  const delFunding = async (fid) => {
+    const res = await fetchWithAuth(`/api/projects/${projectId}/funding?fundingId=${fid}`, { method: 'DELETE' });
+    const json = await res.json();
+    if (json.success) load(); else toast.error?.(json.error || 'Failed');
+  };
+
+  if (loading) return <div className="text-sm text-muted-foreground py-8">Loading budget…</div>;
+  const c = data?.computed || {};
+  const fundShort = c.funding_total < c.allocated;
+
+  return (
+    <div className="space-y-5">
+      {/* Computed cards */}
+      <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
+        <Stat icon={Wallet} label="Allocated" value={money(c.allocated)} />
+        <Stat icon={Wallet} label="Committed" value={money(c.committed)} />
+        <Stat icon={Wallet} label="Actual spent" value={money(c.actual)} />
+        <Stat icon={Wallet} label="Forecast" value={money(c.forecast)} />
+        <Stat icon={Wallet} label="Remaining" value={money(c.remaining)} />
+        <Stat icon={Wallet} label="Variance" value={money(c.variance)} />
+        <Stat icon={Wallet} label="Funding pledged" value={money(c.funding_total)} />
+        <div className="bg-card border border-border rounded-xl p-4">
+          <div className="text-xs text-muted-foreground mb-1">Status</div>
+          {c.status
+            ? <span className={`inline-block px-2 py-0.5 rounded-full text-xs font-medium ${BUDGET_STATUS_STYLE[c.status] || 'bg-muted'}`}>{c.status}</span>
+            : <span className="text-sm text-muted-foreground">No budget set</span>}
+        </div>
+      </div>
+
+      {fundShort && c.allocated > 0 && (
+        <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2">
+          <Wallet size={15} /> Funding pledged ({money(c.funding_total)}) is below the allocated budget ({money(c.allocated)}).
+        </div>
+      )}
+
+      {/* Set budget */}
+      {canEdit && (
+        <div className="bg-card border border-border rounded-xl p-4">
+          <h3 className="text-sm font-semibold text-foreground mb-3">Set budget</h3>
+          <div className="flex flex-wrap items-end gap-3">
+            <div><label className="block text-xs text-muted-foreground mb-1">Allocated ({currency})</label>
+              <input type="number" className={`${field} w-40`} value={alloc} onChange={(e) => setAlloc(e.target.value)} /></div>
+            <div><label className="block text-xs text-muted-foreground mb-1">Forecast (optional)</label>
+              <input type="number" className={`${field} w-40`} value={forecast} onChange={(e) => setForecast(e.target.value)} placeholder="auto" /></div>
+            <label className="inline-flex items-center gap-2 text-sm pb-2">
+              <input type="checkbox" checked={frozen} onChange={(e) => setFrozen(e.target.checked)} /> Freeze spending
+            </label>
+            <button onClick={saveBudget} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium">Save</button>
+          </div>
+        </div>
+      )}
+
+      {/* Funding sources */}
+      <div className="bg-card border border-border rounded-xl">
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-foreground">Funding sources</h3>
+        </div>
+        {canEdit && (
+          <div className="p-3 flex flex-wrap items-end gap-2 border-b border-border">
+            <select className={`${field} w-44`} value={fund.source_type} onChange={(e) => setFund(f => ({ ...f, source_type: e.target.value }))}>
+              {FUNDING_TYPES.map(t => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}
+            </select>
+            <input className={`${field} flex-1 min-w-[120px]`} placeholder="Name / reference" value={fund.name} onChange={(e) => setFund(f => ({ ...f, name: e.target.value }))} />
+            <input type="number" className={`${field} w-32`} placeholder="Amount" value={fund.amount} onChange={(e) => setFund(f => ({ ...f, amount: e.target.value }))} />
+            <select className={`${field} w-32`} value={fund.status} onChange={(e) => setFund(f => ({ ...f, status: e.target.value }))}>
+              {['pledged','received','spent'].map(s => <option key={s} value={s}>{s}</option>)}
+            </select>
+            <button onClick={addFunding} className="inline-flex items-center gap-1 px-3 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium"><Plus size={15} /> Add</button>
+          </div>
+        )}
+        {(data?.funding_sources?.length ?? 0) === 0 ? (
+          <div className="p-6 text-sm text-muted-foreground text-center">No funding sources yet.</div>
+        ) : (
+          <div className="divide-y divide-border">
+            {data.funding_sources.map((f) => (
+              <div key={f.id} className="flex items-center gap-3 p-3 text-sm">
+                <span className="px-2 py-0.5 rounded-full text-xs bg-muted text-muted-foreground">{f.source_type.replace(/_/g, ' ')}</span>
+                <span className="flex-1 min-w-0 truncate text-foreground">{f.name || '—'}</span>
+                <span className="text-muted-foreground">{f.status}</span>
+                <span className="font-medium text-foreground">{money(f.amount)}</span>
+                {canEdit && <button onClick={() => delFunding(f.id)} className="p-1.5 rounded hover:bg-red-100 text-muted-foreground hover:text-red-600"><Trash2 size={15} /></button>}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
