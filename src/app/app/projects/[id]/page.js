@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, Plus, Trash2, Users, ListTree, LayoutDashboard, ShieldCheck,
-  CalendarDays, Wallet, Package, ArrowLeftRight,
+  CalendarDays, Wallet, Package, ArrowLeftRight, ShoppingCart,
 } from 'lucide-react';
 import { fetchWithAuth } from '@/lib/fetch-client';
 import { useToast } from '@/components/ui/Toast';
@@ -95,7 +95,7 @@ export default function ProjectDetailPage() {
 
         {/* Tabs */}
         <div className="flex gap-1 border-b border-border mb-5">
-          {[['overview', 'Overview', LayoutDashboard], ['work', 'Work', ListTree], ['budget', 'Budget', Wallet], ['resources', 'Resources', Package], ['team', 'Team', Users]].map(([key, label, Icon]) => (
+          {[['overview', 'Overview', LayoutDashboard], ['work', 'Work', ListTree], ['budget', 'Budget', Wallet], ['resources', 'Resources', Package], ['procurement', 'Procurement', ShoppingCart], ['team', 'Team', Users]].map(([key, label, Icon]) => (
             <button key={key} onClick={() => setTab(key)}
               className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
                 tab === key ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
@@ -114,6 +114,9 @@ export default function ProjectDetailPage() {
         )}
         {tab === 'resources' && (
           <ResourcesTab projectId={id} canEdit={canEdit} currency={project.currency} toast={toast} />
+        )}
+        {tab === 'procurement' && (
+          <ProcurementTab projectId={id} canEdit={canEdit} currency={project.currency} toast={toast} />
         )}
         {tab === 'team' && (
           <TeamTab project={project} users={users} canManageMembers={canManageMembers}
@@ -668,6 +671,222 @@ function MovementModal({ projectId, resource, onClose, onDone, toast }) {
           </div>
         )}
       </div>
+    </Modal>
+  );
+}
+
+const PROC_STATUSES = ['requested','approved','ordered','received','inspected','stored','allocated','closed','rejected'];
+const PROC_STATUS_STYLE = {
+  requested: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  approved: 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900/30 dark:text-indigo-300',
+  ordered: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+  received: 'bg-cyan-100 text-cyan-700 dark:bg-cyan-900/30 dark:text-cyan-300',
+  inspected: 'bg-teal-100 text-teal-700 dark:bg-teal-900/30 dark:text-teal-300',
+  stored: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+  allocated: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+  closed: 'bg-muted text-muted-foreground', rejected: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+};
+
+function ProcurementTab({ projectId, canEdit, currency, toast }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showNew, setShowNew] = useState(false);
+  const [openId, setOpenId] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/projects/${projectId}/procurement`);
+      const json = await res.json();
+      if (json.success) setRows(json.data);
+    } finally { setLoading(false); }
+  }, [projectId]);
+  useEffect(() => { load(); }, [load]);
+
+  const money = (v) => `${currency} ${Number(v || 0).toLocaleString()}`;
+  if (loading) return <div className="text-sm text-muted-foreground py-8">Loading procurement…</div>;
+
+  return (
+    <div className="space-y-4">
+      {canEdit && (
+        <button onClick={() => setShowNew(true)} className="inline-flex items-center gap-2 px-3 py-1.5 border border-border rounded-lg text-sm hover:bg-muted/50">
+          <Plus size={15} /> New Request
+        </button>
+      )}
+      {rows.length === 0 ? (
+        <div className="border border-dashed border-border rounded-xl py-12 text-center">
+          <ShoppingCart className="w-9 h-9 mx-auto text-muted-foreground/50 mb-2" />
+          <p className="text-foreground font-medium">No procurement requests</p>
+          <p className="text-sm text-muted-foreground mt-1">Raise a request → approve → order → receive → inspect.</p>
+        </div>
+      ) : (
+        <div className="bg-card border border-border rounded-xl divide-y divide-border">
+          {rows.map((r) => (
+            <button key={r.id} onClick={() => setOpenId(r.id)} className="w-full flex items-center gap-3 p-3 text-left hover:bg-muted/40">
+              <div className="min-w-0 flex-1">
+                <div className="font-medium text-foreground truncate">{r.title}</div>
+                <div className="text-xs text-muted-foreground">
+                  {[r.supplier_name, `${r.line_count} line(s)`, r.needed_by ? `need by ${new Date(r.needed_by).toLocaleDateString()}` : null].filter(Boolean).join(' · ')}
+                </div>
+              </div>
+              <span className="font-medium text-foreground text-sm">{money(r.total_est_cost)}</span>
+              <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${PROC_STATUS_STYLE[r.status] || 'bg-muted'}`}>{r.status}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {showNew && <NewRequestModal projectId={projectId} currency={currency} onClose={() => setShowNew(false)} onDone={() => { setShowNew(false); load(); }} toast={toast} />}
+      {openId && <RequestDetailModal projectId={projectId} requestId={openId} canEdit={canEdit} currency={currency} onClose={() => setOpenId(null)} onChanged={load} toast={toast} />}
+    </div>
+  );
+}
+
+function NewRequestModal({ projectId, currency, onClose, onDone, toast }) {
+  const [title, setTitle] = useState('');
+  const [neededBy, setNeededBy] = useState('');
+  const [lines, setLines] = useState([{ description: '', quantity: '', unit: '', est_unit_cost: '' }]);
+  const [saving, setSaving] = useState(false);
+  const setLine = (i, k, v) => setLines(ls => ls.map((l, j) => j === i ? { ...l, [k]: v } : l));
+  const total = lines.reduce((s, l) => s + (Number(l.quantity) || 0) * (Number(l.est_unit_cost) || 0), 0);
+
+  const submit = async () => {
+    if (!title.trim()) { toast.error?.('Title is required'); return; }
+    setSaving(true);
+    try {
+      const res = await fetchWithAuth(`/api/projects/${projectId}/procurement`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title, needed_by: neededBy || null, currency, lines: lines.filter(l => l.description.trim()) }),
+      });
+      const json = await res.json();
+      if (json.success) { toast.success?.('Request created'); onDone(); } else toast.error?.(json.error || 'Failed');
+    } catch { toast.error?.('Failed'); } finally { setSaving(false); }
+  };
+
+  return (
+    <Modal isOpen onClose={onClose} title="New Procurement Request" size="lg"
+      footer={<div className="flex items-center justify-between w-full">
+        <span className="text-sm text-muted-foreground">Est. total: <b className="text-foreground">{currency} {total.toLocaleString()}</b></span>
+        <div className="flex gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted/50">Cancel</button>
+          <button onClick={submit} disabled={saving} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium disabled:opacity-60">{saving ? 'Creating…' : 'Create'}</button>
+        </div>
+      </div>}>
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2"><label className="block text-sm font-medium mb-1">Title *</label><input className={field} value={title} onChange={(e) => setTitle(e.target.value)} autoFocus placeholder="e.g. Cement & rebar for foundation" /></div>
+          <div><label className="block text-sm font-medium mb-1">Needed by</label><input type="date" className={field} value={neededBy} onChange={(e) => setNeededBy(e.target.value)} /></div>
+        </div>
+        <div>
+          <div className="flex items-center justify-between mb-1">
+            <label className="text-sm font-medium">Line items</label>
+            <button onClick={() => setLines(ls => [...ls, { description: '', quantity: '', unit: '', est_unit_cost: '' }])} className="text-xs text-primary inline-flex items-center gap-1"><Plus size={13} /> Add line</button>
+          </div>
+          <div className="space-y-2">
+            {lines.map((l, i) => (
+              <div key={i} className="flex gap-2">
+                <input className={`${field} flex-1`} placeholder="Description" value={l.description} onChange={(e) => setLine(i, 'description', e.target.value)} />
+                <input type="number" className={`${field} w-20`} placeholder="Qty" value={l.quantity} onChange={(e) => setLine(i, 'quantity', e.target.value)} />
+                <input className={`${field} w-20`} placeholder="Unit" value={l.unit} onChange={(e) => setLine(i, 'unit', e.target.value)} />
+                <input type="number" className={`${field} w-28`} placeholder="Unit cost" value={l.est_unit_cost} onChange={(e) => setLine(i, 'est_unit_cost', e.target.value)} />
+                {lines.length > 1 && <button onClick={() => setLines(ls => ls.filter((_, j) => j !== i))} className="p-2 text-muted-foreground hover:text-red-600"><Trash2 size={14} /></button>}
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function RequestDetailModal({ projectId, requestId, canEdit, currency, onClose, onChanged, toast }) {
+  const [pr, setPr] = useState(null);
+  const [rcv, setRcv] = useState({ received_qty: '', rejected_qty: '', inspection_status: 'pending', stored_to_location: '' });
+  const money = (v) => `${currency} ${Number(v || 0).toLocaleString()}`;
+
+  const load = useCallback(async () => {
+    const res = await fetchWithAuth(`/api/projects/${projectId}/procurement/${requestId}`);
+    const json = await res.json();
+    if (json.success) setPr(json.data);
+  }, [projectId, requestId]);
+  useEffect(() => { load(); }, [load]);
+
+  const setStatus = async (status) => {
+    const res = await fetchWithAuth(`/api/projects/${projectId}/procurement/${requestId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }),
+    });
+    const json = await res.json();
+    if (json.success) { toast.success?.(`Marked ${status}`); load(); onChanged(); } else toast.error?.(json.error || 'Failed');
+  };
+  const recordReceipt = async () => {
+    const res = await fetchWithAuth(`/api/projects/${projectId}/procurement/${requestId}/receipts`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ received_qty: Number(rcv.received_qty) || 0, rejected_qty: Number(rcv.rejected_qty) || 0, inspection_status: rcv.inspection_status, stored_to_location: rcv.stored_to_location || null }),
+    });
+    const json = await res.json();
+    if (json.success) { toast.success?.('Receipt recorded'); setRcv({ received_qty: '', rejected_qty: '', inspection_status: 'pending', stored_to_location: '' }); load(); onChanged(); } else toast.error?.(json.error || 'Failed');
+  };
+
+  return (
+    <Modal isOpen onClose={onClose} title={pr?.title || 'Request'} size="lg"
+      subtitle={pr ? `${pr.status} · est. ${money(pr.total_est_cost)}` : ''}>
+      {!pr ? <div className="text-sm text-muted-foreground py-6">Loading…</div> : (
+        <div className="space-y-4">
+          {canEdit && (
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-muted-foreground">Set status:</span>
+              <select className={`${field} w-auto`} value={pr.status} onChange={(e) => setStatus(e.target.value)}>
+                {PROC_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
+              </select>
+              {pr.status === 'approved' && <span className="text-xs text-emerald-600">→ commitment created (feeds budget)</span>}
+            </div>
+          )}
+
+          <div>
+            <div className="text-xs font-semibold text-muted-foreground uppercase mb-1">Line items</div>
+            <div className="border border-border rounded-lg divide-y divide-border">
+              {pr.lines.length === 0 ? <div className="p-3 text-sm text-muted-foreground">No lines.</div> : pr.lines.map((l) => (
+                <div key={l.id} className="flex items-center gap-2 p-2 text-sm">
+                  <span className="flex-1 text-foreground">{l.description}</span>
+                  <span className="text-muted-foreground">{Number(l.quantity)} {l.unit}</span>
+                  <span className="text-foreground">{money(Number(l.quantity) * Number(l.est_unit_cost))}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          <div>
+            <div className="text-xs font-semibold text-muted-foreground uppercase mb-1">Goods receipts</div>
+            {pr.receipts.length === 0 ? <div className="text-sm text-muted-foreground">None yet.</div> : (
+              <div className="space-y-1">
+                {pr.receipts.map((g) => (
+                  <div key={g.id} className="flex items-center gap-2 text-sm">
+                    <span className="text-foreground">recv {Number(g.received_qty)}</span>
+                    {Number(g.rejected_qty) > 0 && <span className="text-red-600">rej {Number(g.rejected_qty)}</span>}
+                    <span className="px-2 py-0.5 rounded-full text-xs bg-muted text-muted-foreground">{g.inspection_status}</span>
+                    <span className="text-muted-foreground ml-auto">{new Date(g.received_at).toLocaleDateString()}</span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+
+          {canEdit && pr.status !== 'closed' && pr.status !== 'rejected' && (
+            <div className="border-t border-border pt-3">
+              <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">Record goods receipt</div>
+              <div className="flex flex-wrap items-end gap-2">
+                <div><label className="block text-xs text-muted-foreground mb-1">Received</label><input type="number" className={`${field} w-24`} value={rcv.received_qty} onChange={(e) => setRcv(s => ({ ...s, received_qty: e.target.value }))} /></div>
+                <div><label className="block text-xs text-muted-foreground mb-1">Rejected</label><input type="number" className={`${field} w-24`} value={rcv.rejected_qty} onChange={(e) => setRcv(s => ({ ...s, rejected_qty: e.target.value }))} /></div>
+                <div><label className="block text-xs text-muted-foreground mb-1">Inspection</label>
+                  <select className={`${field} w-32`} value={rcv.inspection_status} onChange={(e) => setRcv(s => ({ ...s, inspection_status: e.target.value }))}>
+                    {['pending','passed','failed','conditional'].map(x => <option key={x} value={x}>{x}</option>)}
+                  </select></div>
+                <button onClick={recordReceipt} className="px-3 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium">Record</button>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
     </Modal>
   );
 }

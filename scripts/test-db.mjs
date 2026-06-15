@@ -134,6 +134,31 @@ async function main() {
     await expectError(
       () => client.query(`UPDATE resources SET quantity_available = -1 WHERE id=$1`, [rid]),
       'negative quantity_available rejected by CHECK');
+
+    // ── Procurement → commitment → budget bridge (mirrors the PATCH route) ──
+    const { rows: [pr] } = await client.query(
+      `INSERT INTO procurement_requests (project_id, title, total_est_cost, currency, status, requested_by)
+       VALUES ($1,'Cement order',500,'UGX','approved',$2) RETURNING id`, [pid, uid]);
+    // approve side-effect: create an open commitment
+    await client.query(
+      `INSERT INTO commitments (project_id, procurement_request_id, amount, currency, status, created_by)
+       VALUES ($1,$2,500,'UGX','open',$3)`, [pid, pr.id, uid]);
+    const openSum = async () => Number((await client.query(
+      `SELECT COALESCE(SUM(amount),0) v FROM commitments WHERE project_id=$1 AND status='open'`, [pid])).rows[0].v);
+    assert(await openSum() === 500, `approved request opens a 500 commitment (got ${await openSum()})`);
+
+    // budget committed reflects open commitments (mirrors budget recompute)
+    await client.query(`UPDATE project_budgets SET committed_amount=$2 WHERE project_id=$1`, [pid, await openSum()]);
+    const committed = Number((await client.query(`SELECT committed_amount FROM project_budgets WHERE project_id=$1`, [pid])).rows[0].committed_amount);
+    assert(committed === 500, `budget committed_amount = 500 (got ${committed})`);
+
+    // close side-effect: settle the commitment → open total back to 0
+    await client.query(`UPDATE commitments SET status='settled' WHERE procurement_request_id=$1`, [pr.id]);
+    assert(await openSum() === 0, `closing settles the commitment (open now ${await openSum()})`);
+
+    await expectError(
+      () => client.query(`INSERT INTO procurement_requests (project_id, title, status) VALUES ($1,'x','not_a_status')`, [pid]),
+      'invalid procurement status rejected by CHECK');
   } finally {
     await client.query('ROLLBACK'); // nothing persists
   }
