@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, Plus, Trash2, Users, ListTree, LayoutDashboard, ShieldCheck,
-  CalendarDays, Wallet, Package, ArrowLeftRight, ShoppingCart,
+  CalendarDays, Wallet, Package, ArrowLeftRight, ShoppingCart, AlertTriangle, Stethoscope, CheckCircle2,
 } from 'lucide-react';
 import { fetchWithAuth } from '@/lib/fetch-client';
 import { useToast } from '@/components/ui/Toast';
@@ -95,7 +95,7 @@ export default function ProjectDetailPage() {
 
         {/* Tabs */}
         <div className="flex gap-1 border-b border-border mb-5">
-          {[['overview', 'Overview', LayoutDashboard], ['work', 'Work', ListTree], ['budget', 'Budget', Wallet], ['resources', 'Resources', Package], ['procurement', 'Procurement', ShoppingCart], ['team', 'Team', Users]].map(([key, label, Icon]) => (
+          {[['overview', 'Overview', LayoutDashboard], ['work', 'Work', ListTree], ['budget', 'Budget', Wallet], ['resources', 'Resources', Package], ['procurement', 'Procurement', ShoppingCart], ['blockers', 'Blockers', AlertTriangle], ['team', 'Team', Users]].map(([key, label, Icon]) => (
             <button key={key} onClick={() => setTab(key)}
               className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
                 tab === key ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
@@ -117,6 +117,9 @@ export default function ProjectDetailPage() {
         )}
         {tab === 'procurement' && (
           <ProcurementTab projectId={id} canEdit={canEdit} currency={project.currency} toast={toast} />
+        )}
+        {tab === 'blockers' && (
+          <BlockersTab projectId={id} canEdit={canEdit} toast={toast} />
         )}
         {tab === 'team' && (
           <TeamTab project={project} users={users} canManageMembers={canManageMembers}
@@ -887,6 +890,153 @@ function RequestDetailModal({ projectId, requestId, canEdit, currency, onClose, 
           )}
         </div>
       )}
+    </Modal>
+  );
+}
+
+const BLOCKER_TYPES = ['missing_budget','missing_material','missing_sister_material','unavailable_labour',
+  'unavailable_equipment','transport_delay','supplier_delay','approval_delay','client_delay',
+  'design_document_issue','weather_external','quality_defect','rework_required','scope_change','unclear_responsibility'];
+const SEVERITY_STYLE = {
+  critical: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+  high: 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300',
+  medium: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  low: 'bg-muted text-muted-foreground',
+};
+
+function BlockersTab({ projectId, canEdit, toast }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [diagnosing, setDiagnosing] = useState(false);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/projects/${projectId}/blockers`);
+      const json = await res.json();
+      if (json.success) setRows(json.data);
+    } finally { setLoading(false); }
+  }, [projectId]);
+  useEffect(() => { load(); }, [load]);
+
+  const diagnose = async () => {
+    setDiagnosing(true);
+    try {
+      const res = await fetchWithAuth(`/api/projects/${projectId}/blockers/diagnose`, { method: 'POST' });
+      const json = await res.json();
+      if (json.success) {
+        const d = json.data;
+        toast.success?.(`Diagnosis: ${d.detected} new, ${d.resolved} cleared, ${d.open_total} open`);
+        load();
+      } else toast.error?.(json.error || 'Diagnosis failed');
+    } catch { toast.error?.('Diagnosis failed'); } finally { setDiagnosing(false); }
+  };
+  const resolve = async (bid) => {
+    const res = await fetchWithAuth(`/api/projects/${projectId}/blockers/${bid}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status: 'resolved' }),
+    });
+    const json = await res.json();
+    if (json.success) load(); else toast.error?.(json.error || 'Failed');
+  };
+  const del = async (bid) => {
+    const res = await fetchWithAuth(`/api/projects/${projectId}/blockers/${bid}`, { method: 'DELETE' });
+    const json = await res.json();
+    if (json.success) load(); else toast.error?.(json.error || 'Failed');
+  };
+
+  const open = rows.filter(r => r.status !== 'resolved');
+  if (loading) return <div className="text-sm text-muted-foreground py-8">Loading blockers…</div>;
+
+  return (
+    <div className="space-y-4">
+      <div className="flex flex-wrap items-center gap-2">
+        {canEdit && (
+          <button onClick={diagnose} disabled={diagnosing}
+            className="inline-flex items-center gap-2 px-3 py-1.5 bg-primary text-primary-foreground rounded-lg text-sm font-medium disabled:opacity-60">
+            <Stethoscope size={15} /> {diagnosing ? 'Diagnosing…' : 'Run diagnosis'}
+          </button>
+        )}
+        {canEdit && (
+          <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-2 px-3 py-1.5 border border-border rounded-lg text-sm hover:bg-muted/50">
+            <Plus size={15} /> Add blocker
+          </button>
+        )}
+        <span className="text-sm text-muted-foreground ml-auto">{open.length} open</span>
+      </div>
+
+      {rows.length === 0 ? (
+        <div className="border border-dashed border-border rounded-xl py-12 text-center">
+          <CheckCircle2 className="w-9 h-9 mx-auto text-emerald-500/60 mb-2" />
+          <p className="text-foreground font-medium">No blockers</p>
+          <p className="text-sm text-muted-foreground mt-1">Run diagnosis to auto-detect stalls from project state, or add one manually.</p>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          {rows.map((b) => (
+            <div key={b.id} className={`bg-card border rounded-xl p-3 ${b.status === 'resolved' ? 'border-border opacity-60' : 'border-border'}`}>
+              <div className="flex items-start gap-3">
+                <AlertTriangle size={18} className={b.status === 'resolved' ? 'text-muted-foreground mt-0.5' : 'text-orange-500 mt-0.5'} />
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <span className="font-medium text-foreground text-sm">{b.blocker_type.replace(/_/g, ' ')}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${SEVERITY_STYLE[b.severity] || 'bg-muted'}`}>{b.severity}</span>
+                    <span className="px-2 py-0.5 rounded-full text-xs bg-muted text-muted-foreground">{b.detected_by}</span>
+                    <span className="px-2 py-0.5 rounded-full text-xs bg-muted text-muted-foreground">{b.target_type}</span>
+                    {b.status === 'resolved' && <span className="text-xs text-emerald-600">resolved</span>}
+                  </div>
+                  {b.description && <p className="text-sm text-foreground mt-1">{b.description}</p>}
+                  {b.required_action && <p className="text-xs text-muted-foreground mt-0.5">→ {b.required_action}</p>}
+                  {b.responsible_name && <p className="text-xs text-muted-foreground mt-0.5">Owner: {b.responsible_name}</p>}
+                </div>
+                {canEdit && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    {b.status !== 'resolved' && <button onClick={() => resolve(b.id)} title="Resolve" className="p-1.5 rounded hover:bg-emerald-100 text-muted-foreground hover:text-emerald-600"><CheckCircle2 size={15} /></button>}
+                    <button onClick={() => del(b.id)} title="Delete" className="p-1.5 rounded hover:bg-red-100 text-muted-foreground hover:text-red-600"><Trash2 size={15} /></button>
+                  </div>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+
+      {showAdd && <AddBlockerModal projectId={projectId} onClose={() => setShowAdd(false)} onDone={() => { setShowAdd(false); load(); }} toast={toast} />}
+    </div>
+  );
+}
+
+function AddBlockerModal({ projectId, onClose, onDone, toast }) {
+  const [f, setF] = useState({ blocker_type: 'unclear_responsibility', severity: 'medium', description: '', required_action: '' });
+  const [saving, setSaving] = useState(false);
+  const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }));
+  const submit = async () => {
+    setSaving(true);
+    try {
+      const res = await fetchWithAuth(`/api/projects/${projectId}/blockers`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...f, target_type: 'project' }),
+      });
+      const json = await res.json();
+      if (json.success) { toast.success?.('Blocker added'); onDone(); } else toast.error?.(json.error || 'Failed');
+    } catch { toast.error?.('Failed'); } finally { setSaving(false); }
+  };
+  return (
+    <Modal isOpen onClose={onClose} title="Add Blocker"
+      footer={<div className="flex justify-end gap-2">
+        <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted/50">Cancel</button>
+        <button onClick={submit} disabled={saving} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium disabled:opacity-60">{saving ? 'Adding…' : 'Add'}</button>
+      </div>}>
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div><label className="block text-sm font-medium mb-1">Type</label>
+            <select className={field} value={f.blocker_type} onChange={set('blocker_type')}>{BLOCKER_TYPES.map(t => <option key={t} value={t}>{t.replace(/_/g, ' ')}</option>)}</select></div>
+          <div><label className="block text-sm font-medium mb-1">Severity</label>
+            <select className={field} value={f.severity} onChange={set('severity')}>{['low','medium','high','critical'].map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+        </div>
+        <div><label className="block text-sm font-medium mb-1">Description</label><textarea className={`${field} resize-none`} rows={2} value={f.description} onChange={set('description')} /></div>
+        <div><label className="block text-sm font-medium mb-1">Required action</label><input className={field} value={f.required_action} onChange={set('required_action')} /></div>
+      </div>
     </Modal>
   );
 }

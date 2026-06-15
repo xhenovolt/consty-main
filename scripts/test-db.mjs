@@ -159,6 +159,29 @@ async function main() {
     await expectError(
       () => client.query(`INSERT INTO procurement_requests (project_id, title, status) VALUES ($1,'x','not_a_status')`, [pid]),
       'invalid procurement status rejected by CHECK');
+
+    // ── Blocker auto-diagnosis (mirrors the diagnose engine) ───────────
+    // resource `rid` is a material short 60<100 → missing_material expected.
+    const detectMissing = `INSERT INTO blockers (project_id,target_type,target_id,blocker_type,description,severity,detected_by,status)
+      SELECT $1,'resource',r.id,'missing_material','short','high','auto','open' FROM resources r
+      WHERE r.project_id=$1 AND r.category IN ('material','consumable','fuel','water','power') AND r.quantity_available < r.quantity_required
+      AND NOT EXISTS (SELECT 1 FROM blockers b WHERE b.project_id=$1 AND b.target_type='resource' AND b.target_id=r.id AND b.blocker_type='missing_material' AND b.status<>'resolved')`;
+    const d1 = (await client.query(detectMissing, [pid])).rowCount;
+    assert(d1 === 1, `diagnosis detects 1 missing_material blocker (got ${d1})`);
+    const d2 = (await client.query(detectMissing, [pid])).rowCount;
+    assert(d2 === 0, `diagnosis is idempotent — no duplicate (got ${d2})`);
+
+    // restock → re-run resolver → blocker auto-resolves
+    await client.query(`UPDATE resources SET quantity_available = quantity_required WHERE id=$1`, [rid]);
+    const resolved = (await client.query(
+      `UPDATE blockers b SET status='resolved', resolved_at=now()
+       WHERE b.project_id=$1 AND b.detected_by='auto' AND b.status<>'resolved' AND b.blocker_type='missing_material'
+       AND NOT EXISTS (SELECT 1 FROM resources r WHERE r.id=b.target_id AND r.quantity_available < r.quantity_required)`, [pid])).rowCount;
+    assert(resolved === 1, `restock auto-resolves the blocker (got ${resolved})`);
+
+    await expectError(
+      () => client.query(`INSERT INTO blockers (project_id, blocker_type) VALUES ($1,'not_a_type')`, [pid]),
+      'invalid blocker_type rejected by CHECK');
   } finally {
     await client.query('ROLLBACK'); // nothing persists
   }
