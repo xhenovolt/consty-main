@@ -6,6 +6,7 @@ import Link from 'next/link';
 import {
   ArrowLeft, Plus, Trash2, Users, ListTree, LayoutDashboard, ShieldCheck,
   CalendarDays, Wallet, Package, ArrowLeftRight, ShoppingCart, AlertTriangle, Stethoscope, CheckCircle2,
+  ShieldAlert, ClipboardCheck,
 } from 'lucide-react';
 import { fetchWithAuth } from '@/lib/fetch-client';
 import { useToast } from '@/components/ui/Toast';
@@ -93,11 +94,11 @@ export default function ProjectDetailPage() {
           </div>
         </div>
 
-        {/* Tabs */}
-        <div className="flex gap-1 border-b border-border mb-5">
-          {[['overview', 'Overview', LayoutDashboard], ['work', 'Work', ListTree], ['budget', 'Budget', Wallet], ['resources', 'Resources', Package], ['procurement', 'Procurement', ShoppingCart], ['blockers', 'Blockers', AlertTriangle], ['team', 'Team', Users]].map(([key, label, Icon]) => (
+        {/* Tabs (horizontally scrollable on mobile) */}
+        <div className="flex gap-1 border-b border-border mb-5 overflow-x-auto scrollbar-thin">
+          {[['overview', 'Overview', LayoutDashboard], ['work', 'Work', ListTree], ['budget', 'Budget', Wallet], ['resources', 'Resources', Package], ['procurement', 'Procurement', ShoppingCart], ['blockers', 'Blockers', AlertTriangle], ['risk', 'Risk', ShieldAlert], ['quality', 'Quality', ClipboardCheck], ['team', 'Team', Users]].map(([key, label, Icon]) => (
             <button key={key} onClick={() => setTab(key)}
-              className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
+              className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition shrink-0 whitespace-nowrap ${
                 tab === key ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
               <Icon size={15} /> {label}
             </button>
@@ -120,6 +121,12 @@ export default function ProjectDetailPage() {
         )}
         {tab === 'blockers' && (
           <BlockersTab projectId={id} canEdit={canEdit} toast={toast} />
+        )}
+        {tab === 'risk' && (
+          <RiskTab projectId={id} canEdit={canEdit} users={users} toast={toast} />
+        )}
+        {tab === 'quality' && (
+          <QualityTab projectId={id} canEdit={canEdit} items={items} users={users} toast={toast} />
         )}
         {tab === 'team' && (
           <TeamTab project={project} users={users} canManageMembers={canManageMembers}
@@ -1036,6 +1043,307 @@ function AddBlockerModal({ projectId, onClose, onDone, toast }) {
         </div>
         <div><label className="block text-sm font-medium mb-1">Description</label><textarea className={`${field} resize-none`} rows={2} value={f.description} onChange={set('description')} /></div>
         <div><label className="block text-sm font-medium mb-1">Required action</label><input className={field} value={f.required_action} onChange={set('required_action')} /></div>
+      </div>
+    </Modal>
+  );
+}
+
+function riskScoreStyle(score) {
+  if (score >= 15) return 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300';
+  if (score >= 8) return 'bg-orange-100 text-orange-700 dark:bg-orange-900/30 dark:text-orange-300';
+  if (score >= 4) return 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300';
+  return 'bg-muted text-muted-foreground';
+}
+
+function RiskTab({ projectId, canEdit, users, toast }) {
+  const [risks, setRisks] = useState([]);
+  const [issues, setIssues] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [add, setAdd] = useState(null); // 'risk' | 'issue' | null
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [r, i] = await Promise.all([
+        fetchWithAuth(`/api/projects/${projectId}/risks`).then(x => x.json()),
+        fetchWithAuth(`/api/projects/${projectId}/issues`).then(x => x.json()),
+      ]);
+      if (r.success) setRisks(r.data);
+      if (i.success) setIssues(i.data);
+    } finally { setLoading(false); }
+  }, [projectId]);
+  useEffect(() => { load(); }, [load]);
+
+  const patch = async (kind, itemId, body) => {
+    const res = await fetchWithAuth(`/api/projects/${projectId}/${kind}/${itemId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await res.json(); if (j.success) load(); else toast.error?.(j.error || 'Failed');
+  };
+  const del = async (kind, itemId) => {
+    const res = await fetchWithAuth(`/api/projects/${projectId}/${kind}/${itemId}`, { method: 'DELETE' });
+    const j = await res.json(); if (j.success) load(); else toast.error?.(j.error || 'Failed');
+  };
+
+  if (loading) return <div className="text-sm text-muted-foreground py-8">Loading…</div>;
+  return (
+    <div className="space-y-6">
+      {/* Risks */}
+      <section>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold text-foreground">Risks <span className="text-muted-foreground font-normal">(possible future problems)</span></h3>
+          {canEdit && <button onClick={() => setAdd('risk')} className="inline-flex items-center gap-1 text-sm text-primary"><Plus size={14} /> Add risk</button>}
+        </div>
+        {risks.length === 0 ? <p className="text-sm text-muted-foreground">No risks logged.</p> : (
+          <div className="bg-card border border-border rounded-xl divide-y divide-border">
+            {risks.map((r) => (
+              <div key={r.id} className="flex items-start gap-3 p-3">
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${riskScoreStyle(r.score)}`} title={`P${r.probability} × I${r.impact}`}>{r.score}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-foreground">{r.description}</p>
+                  {r.mitigation_plan && <p className="text-xs text-muted-foreground mt-0.5">Mitigation: {r.mitigation_plan}</p>}
+                  {r.owner_name && <p className="text-xs text-muted-foreground">Owner: {r.owner_name}</p>}
+                </div>
+                {canEdit && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <select value={r.status} onChange={(e) => patch('risks', r.id, { status: e.target.value })} className="text-xs bg-background border border-border rounded px-1.5 py-1">
+                      {['open','mitigating','closed','materialized'].map(s => <option key={s} value={s}>{s}</option>)}
+                    </select>
+                    <button onClick={() => del('risks', r.id)} className="p-1.5 rounded hover:bg-red-100 text-muted-foreground hover:text-red-600"><Trash2 size={14} /></button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {/* Issues */}
+      <section>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold text-foreground">Issues <span className="text-muted-foreground font-normal">(current active problems)</span></h3>
+          {canEdit && <button onClick={() => setAdd('issue')} className="inline-flex items-center gap-1 text-sm text-primary"><Plus size={14} /> Add issue</button>}
+        </div>
+        {issues.length === 0 ? <p className="text-sm text-muted-foreground">No issues logged.</p> : (
+          <div className="bg-card border border-border rounded-xl divide-y divide-border">
+            {issues.map((i) => (
+              <div key={i.id} className="flex items-start gap-3 p-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-foreground">{i.description}</p>
+                  {i.current_impact && <p className="text-xs text-muted-foreground mt-0.5">Impact: {i.current_impact}</p>}
+                  <p className="text-xs text-muted-foreground">{[i.owner_name && `Owner: ${i.owner_name}`, i.due_date && `Due ${new Date(i.due_date).toLocaleDateString()}`].filter(Boolean).join(' · ')}</p>
+                </div>
+                {canEdit && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <select value={i.status} onChange={(e) => patch('issues', i.id, { status: e.target.value })} className="text-xs bg-background border border-border rounded px-1.5 py-1">
+                      {['open','in_progress','resolved'].map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
+                    </select>
+                    <button onClick={() => del('issues', i.id)} className="p-1.5 rounded hover:bg-red-100 text-muted-foreground hover:text-red-600"><Trash2 size={14} /></button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {add === 'risk' && <AddRiskModal projectId={projectId} users={users} onClose={() => setAdd(null)} onDone={() => { setAdd(null); load(); }} toast={toast} />}
+      {add === 'issue' && <AddIssueModal projectId={projectId} users={users} onClose={() => setAdd(null)} onDone={() => { setAdd(null); load(); }} toast={toast} />}
+    </div>
+  );
+}
+
+function AddRiskModal({ projectId, users, onClose, onDone, toast }) {
+  const [f, setF] = useState({ description: '', probability: 3, impact: 3, mitigation_plan: '', owner_id: '' });
+  const [saving, setSaving] = useState(false);
+  const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }));
+  const submit = async () => {
+    if (!f.description.trim()) { toast.error?.('Description required'); return; }
+    setSaving(true);
+    try {
+      const res = await fetchWithAuth(`/api/projects/${projectId}/risks`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...f, probability: Number(f.probability), impact: Number(f.impact), owner_id: f.owner_id || null }) });
+      const j = await res.json(); if (j.success) { toast.success?.('Risk added'); onDone(); } else toast.error?.(j.error || 'Failed');
+    } finally { setSaving(false); }
+  };
+  return (
+    <Modal isOpen onClose={onClose} title="Add Risk"
+      footer={<div className="flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-border">Cancel</button><button onClick={submit} disabled={saving} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium disabled:opacity-60">{saving ? 'Adding…' : 'Add'}</button></div>}>
+      <div className="space-y-4">
+        <div><label className="block text-sm font-medium mb-1">Description</label><textarea className={`${field} resize-none`} rows={2} value={f.description} onChange={set('description')} /></div>
+        <div className="grid grid-cols-2 gap-3">
+          <div><label className="block text-sm font-medium mb-1">Probability (1–5)</label><input type="number" min={1} max={5} className={field} value={f.probability} onChange={set('probability')} /></div>
+          <div><label className="block text-sm font-medium mb-1">Impact (1–5)</label><input type="number" min={1} max={5} className={field} value={f.impact} onChange={set('impact')} /></div>
+        </div>
+        <div><label className="block text-sm font-medium mb-1">Mitigation plan</label><input className={field} value={f.mitigation_plan} onChange={set('mitigation_plan')} /></div>
+        <div><label className="block text-sm font-medium mb-1">Owner</label><select className={field} value={f.owner_id} onChange={set('owner_id')}><option value="">— Unassigned —</option>{users.map(u => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}</select></div>
+      </div>
+    </Modal>
+  );
+}
+
+function AddIssueModal({ projectId, users, onClose, onDone, toast }) {
+  const [f, setF] = useState({ description: '', current_impact: '', resolution_plan: '', due_date: '', owner_id: '' });
+  const [saving, setSaving] = useState(false);
+  const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }));
+  const submit = async () => {
+    if (!f.description.trim()) { toast.error?.('Description required'); return; }
+    setSaving(true);
+    try {
+      const res = await fetchWithAuth(`/api/projects/${projectId}/issues`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...f, due_date: f.due_date || null, owner_id: f.owner_id || null }) });
+      const j = await res.json(); if (j.success) { toast.success?.('Issue added'); onDone(); } else toast.error?.(j.error || 'Failed');
+    } finally { setSaving(false); }
+  };
+  return (
+    <Modal isOpen onClose={onClose} title="Add Issue"
+      footer={<div className="flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-border">Cancel</button><button onClick={submit} disabled={saving} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium disabled:opacity-60">{saving ? 'Adding…' : 'Add'}</button></div>}>
+      <div className="space-y-4">
+        <div><label className="block text-sm font-medium mb-1">Description</label><textarea className={`${field} resize-none`} rows={2} value={f.description} onChange={set('description')} /></div>
+        <div><label className="block text-sm font-medium mb-1">Current impact</label><input className={field} value={f.current_impact} onChange={set('current_impact')} /></div>
+        <div><label className="block text-sm font-medium mb-1">Resolution plan</label><input className={field} value={f.resolution_plan} onChange={set('resolution_plan')} /></div>
+        <div className="grid grid-cols-2 gap-3">
+          <div><label className="block text-sm font-medium mb-1">Due date</label><input type="date" className={field} value={f.due_date} onChange={set('due_date')} /></div>
+          <div><label className="block text-sm font-medium mb-1">Owner</label><select className={field} value={f.owner_id} onChange={set('owner_id')}><option value="">— Unassigned —</option>{users.map(u => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}</select></div>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+function QualityTab({ projectId, canEdit, items, users, toast }) {
+  const [inspections, setInspections] = useState([]);
+  const [defects, setDefects] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [add, setAdd] = useState(null); // 'inspection' | 'defect'
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [ins, def] = await Promise.all([
+        fetchWithAuth(`/api/projects/${projectId}/inspections`).then(x => x.json()),
+        fetchWithAuth(`/api/projects/${projectId}/defects`).then(x => x.json()),
+      ]);
+      if (ins.success) setInspections(ins.data);
+      if (def.success) setDefects(def.data);
+    } finally { setLoading(false); }
+  }, [projectId]);
+  useEffect(() => { load(); }, [load]);
+
+  const patchDefect = async (did, body) => {
+    const res = await fetchWithAuth(`/api/projects/${projectId}/defects/${did}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+    const j = await res.json(); if (j.success) load(); else toast.error?.(j.error || 'Failed');
+  };
+  const delDefect = async (did) => {
+    const res = await fetchWithAuth(`/api/projects/${projectId}/defects/${did}`, { method: 'DELETE' });
+    const j = await res.json(); if (j.success) load(); else toast.error?.(j.error || 'Failed');
+  };
+
+  const RESULT_STYLE = { pass: 'bg-emerald-100 text-emerald-700', fail: 'bg-red-100 text-red-700', conditional: 'bg-amber-100 text-amber-700', pending: 'bg-muted text-muted-foreground' };
+  if (loading) return <div className="text-sm text-muted-foreground py-8">Loading…</div>;
+  return (
+    <div className="space-y-6">
+      <section>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold text-foreground">Inspections</h3>
+          {canEdit && <button onClick={() => setAdd('inspection')} className="inline-flex items-center gap-1 text-sm text-primary"><Plus size={14} /> Record inspection</button>}
+        </div>
+        {inspections.length === 0 ? <p className="text-sm text-muted-foreground">No inspections.</p> : (
+          <div className="bg-card border border-border rounded-xl divide-y divide-border">
+            {inspections.map((ins) => (
+              <div key={ins.id} className="flex items-center gap-3 p-3 text-sm">
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${RESULT_STYLE[ins.result] || 'bg-muted'}`}>{ins.result}</span>
+                <span className="flex-1 min-w-0 truncate text-foreground">{ins.work_item_name || 'General'}{ins.notes ? ` — ${ins.notes}` : ''}</span>
+                <span className="text-xs text-muted-foreground">{ins.inspector_name || ''} {ins.performed_at ? new Date(ins.performed_at).toLocaleDateString() : ''}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      <section>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold text-foreground">Defects <span className="text-muted-foreground font-normal">(rework feeds blocker diagnosis)</span></h3>
+          {canEdit && <button onClick={() => setAdd('defect')} className="inline-flex items-center gap-1 text-sm text-primary"><Plus size={14} /> Log defect</button>}
+        </div>
+        {defects.length === 0 ? <p className="text-sm text-muted-foreground">No defects.</p> : (
+          <div className="bg-card border border-border rounded-xl divide-y divide-border">
+            {defects.map((d) => (
+              <div key={d.id} className="flex items-start gap-3 p-3">
+                <span className={`px-2 py-0.5 rounded-full text-xs font-medium shrink-0 ${SEVERITY_STYLE[d.severity] || 'bg-muted'}`}>{d.severity}</span>
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm text-foreground">{d.description}</p>
+                  <p className="text-xs text-muted-foreground">{[d.work_item_name, d.rework_required ? 'rework required' : null, d.assigned_name && `→ ${d.assigned_name}`].filter(Boolean).join(' · ')}</p>
+                </div>
+                {canEdit && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    <select value={d.status} onChange={(e) => patchDefect(d.id, { status: e.target.value })} className="text-xs bg-background border border-border rounded px-1.5 py-1">
+                      {['open','in_rework','closed'].map(s => <option key={s} value={s}>{s.replace('_', ' ')}</option>)}
+                    </select>
+                    <button onClick={() => delDefect(d.id)} className="p-1.5 rounded hover:bg-red-100 text-muted-foreground hover:text-red-600"><Trash2 size={14} /></button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+      </section>
+
+      {add === 'inspection' && <AddInspectionModal projectId={projectId} items={items} onClose={() => setAdd(null)} onDone={() => { setAdd(null); load(); }} toast={toast} />}
+      {add === 'defect' && <AddDefectModal projectId={projectId} items={items} users={users} onClose={() => setAdd(null)} onDone={() => { setAdd(null); load(); }} toast={toast} />}
+    </div>
+  );
+}
+
+function AddInspectionModal({ projectId, items, onClose, onDone, toast }) {
+  const [f, setF] = useState({ work_item_id: '', result: 'pass', notes: '' });
+  const [saving, setSaving] = useState(false);
+  const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }));
+  const submit = async () => {
+    setSaving(true);
+    try {
+      const res = await fetchWithAuth(`/api/projects/${projectId}/inspections`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...f, work_item_id: f.work_item_id || null }) });
+      const j = await res.json(); if (j.success) { toast.success?.('Inspection recorded'); onDone(); } else toast.error?.(j.error || 'Failed');
+    } finally { setSaving(false); }
+  };
+  return (
+    <Modal isOpen onClose={onClose} title="Record Inspection"
+      footer={<div className="flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-border">Cancel</button><button onClick={submit} disabled={saving} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium disabled:opacity-60">{saving ? 'Saving…' : 'Record'}</button></div>}>
+      <div className="space-y-4">
+        <div><label className="block text-sm font-medium mb-1">Work item</label><select className={field} value={f.work_item_id} onChange={set('work_item_id')}><option value="">— General —</option>{items.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
+        <div><label className="block text-sm font-medium mb-1">Result</label><select className={field} value={f.result} onChange={set('result')}>{['pass','fail','conditional','pending'].map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+        <div><label className="block text-sm font-medium mb-1">Notes</label><input className={field} value={f.notes} onChange={set('notes')} /></div>
+      </div>
+    </Modal>
+  );
+}
+
+function AddDefectModal({ projectId, items, users, onClose, onDone, toast }) {
+  const [f, setF] = useState({ description: '', severity: 'medium', work_item_id: '', assigned_to: '', rework_required: true });
+  const [saving, setSaving] = useState(false);
+  const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }));
+  const submit = async () => {
+    if (!f.description.trim()) { toast.error?.('Description required'); return; }
+    setSaving(true);
+    try {
+      const res = await fetchWithAuth(`/api/projects/${projectId}/defects`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...f, work_item_id: f.work_item_id || null, assigned_to: f.assigned_to || null }) });
+      const j = await res.json(); if (j.success) { toast.success?.('Defect logged'); onDone(); } else toast.error?.(j.error || 'Failed');
+    } finally { setSaving(false); }
+  };
+  return (
+    <Modal isOpen onClose={onClose} title="Log Defect"
+      footer={<div className="flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-border">Cancel</button><button onClick={submit} disabled={saving} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium disabled:opacity-60">{saving ? 'Saving…' : 'Log'}</button></div>}>
+      <div className="space-y-4">
+        <div><label className="block text-sm font-medium mb-1">Description</label><textarea className={`${field} resize-none`} rows={2} value={f.description} onChange={set('description')} /></div>
+        <div className="grid grid-cols-2 gap-3">
+          <div><label className="block text-sm font-medium mb-1">Severity</label><select className={field} value={f.severity} onChange={set('severity')}>{['low','medium','high','critical'].map(s => <option key={s} value={s}>{s}</option>)}</select></div>
+          <div><label className="block text-sm font-medium mb-1">Work item</label><select className={field} value={f.work_item_id} onChange={set('work_item_id')}><option value="">— None —</option>{items.map(w => <option key={w.id} value={w.id}>{w.name}</option>)}</select></div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div><label className="block text-sm font-medium mb-1">Assign to</label><select className={field} value={f.assigned_to} onChange={set('assigned_to')}><option value="">— Unassigned —</option>{users.map(u => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}</select></div>
+          <label className="flex items-center gap-2 text-sm pt-6"><input type="checkbox" checked={f.rework_required} onChange={(e) => setF(p => ({ ...p, rework_required: e.target.checked }))} /> Rework required</label>
+        </div>
       </div>
     </Modal>
   );

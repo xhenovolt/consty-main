@@ -182,6 +182,22 @@ async function main() {
     await expectError(
       () => client.query(`INSERT INTO blockers (project_id, blocker_type) VALUES ($1,'not_a_type')`, [pid]),
       'invalid blocker_type rejected by CHECK');
+
+    // ── Risk score (generated), issue, defect ─────────────────────────
+    const { rows: [risk] } = await client.query(
+      `INSERT INTO risks (project_id, description, probability, impact) VALUES ($1,'Rain delay',4,5) RETURNING score`, [pid]);
+    assert(Number(risk.score) === 20, `risk score generated = probability×impact = 20 (got ${risk.score})`);
+    await expectError(
+      () => client.query(`INSERT INTO risks (project_id, description, probability) VALUES ($1,'x',9)`, [pid]),
+      'risk probability out of 1–5 rejected by CHECK');
+
+    const { rows: [iss] } = await client.query(
+      `INSERT INTO project_issues (project_id, description) VALUES ($1,'Access road blocked') RETURNING status`, [pid]);
+    assert(iss.status === 'open', `new issue defaults to open (got ${iss.status})`);
+
+    const { rows: [def] } = await client.query(
+      `INSERT INTO defects (project_id, description, severity, rework_required) VALUES ($1,'Honeycomb in slab','high',true) RETURNING status, rework_required`, [pid]);
+    assert(def.status === 'open' && def.rework_required === true, 'defect logged (open, rework_required)');
   } finally {
     await client.query('ROLLBACK'); // nothing persists
   }
