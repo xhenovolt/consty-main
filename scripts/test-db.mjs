@@ -94,6 +94,46 @@ async function main() {
     await expectError(
       () => client.query(`INSERT INTO projects (code, name, status) VALUES ('X','Y','not_a_status')`),
       'invalid project status rejected by CHECK');
+
+    // ── Resources + inventory movements (mirrors the movements route) ──
+    const { rows: [r] } = await client.query(
+      `INSERT INTO resources (project_id, name, category, unit_of_measure, quantity_required, attributes)
+       VALUES ($1,'Cement','material','bags',100,'{"grade":"32.5N"}'::jsonb) RETURNING id`, [pid]);
+    const rid = r.id;
+    assert(!!rid, 'create resource (material with attributes)');
+
+    // Apply a movement exactly as the route does: deltas + atomic CTE update.
+    const move = async (type, qty) => {
+      const { rows: [cur] } = await client.query(`SELECT quantity_available FROM resources WHERE id=$1`, [rid]);
+      const avail = Number(cur.quantity_available);
+      let dA = 0, dC = 0, dR = 0, dW = 0;
+      if (type === 'receive') dA = qty;
+      else if (type === 'consume') { dA = -qty; dC = qty; }
+      else if (type === 'waste') { dA = -qty; dW = qty; }
+      else if (type === 'return') { dA = qty; dR = qty; }
+      else if (type === 'adjust') dA = qty - avail;
+      await client.query(
+        `WITH mv AS (INSERT INTO resource_movements (resource_id, movement_type, quantity) VALUES ($1,$2,$3) RETURNING id)
+         UPDATE resources SET quantity_available=quantity_available+$4, quantity_consumed=quantity_consumed+$5,
+           quantity_returned=quantity_returned+$6, quantity_wasted=quantity_wasted+$7, updated_at=now()
+         WHERE id=$1`, [rid, type, qty, dA, dC, dR, dW]);
+    };
+    await move('receive', 100); await move('consume', 30); await move('waste', 5);
+    await move('return', 5); await move('adjust', 60);
+    const { rows: [q] } = await client.query(
+      `SELECT quantity_available a, quantity_consumed c, quantity_returned r, quantity_wasted w FROM resources WHERE id=$1`, [rid]);
+    assert(Number(q.a) === 60 && Number(q.c) === 30 && Number(q.w) === 5 && Number(q.r) === 5,
+      `movement math: avail=60 consumed=30 wasted=5 returned=5 (got a=${q.a} c=${q.c} w=${q.w} r=${q.r})`);
+
+    const mvCount = (await client.query(`SELECT count(*)::int n FROM resource_movements WHERE resource_id=$1`, [rid])).rows[0].n;
+    assert(mvCount === 5, `5 movements recorded in ledger (got ${mvCount})`);
+
+    await expectError(
+      () => client.query(`INSERT INTO resources (project_id, name, category) VALUES ($1,'x','not_a_category')`, [pid]),
+      'invalid resource category rejected by CHECK');
+    await expectError(
+      () => client.query(`UPDATE resources SET quantity_available = -1 WHERE id=$1`, [rid]),
+      'negative quantity_available rejected by CHECK');
   } finally {
     await client.query('ROLLBACK'); // nothing persists
   }

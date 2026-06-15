@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
   ArrowLeft, Plus, Trash2, Users, ListTree, LayoutDashboard, ShieldCheck,
-  CalendarDays, Wallet,
+  CalendarDays, Wallet, Package, ArrowLeftRight,
 } from 'lucide-react';
 import { fetchWithAuth } from '@/lib/fetch-client';
 import { useToast } from '@/components/ui/Toast';
@@ -95,7 +95,7 @@ export default function ProjectDetailPage() {
 
         {/* Tabs */}
         <div className="flex gap-1 border-b border-border mb-5">
-          {[['overview', 'Overview', LayoutDashboard], ['work', 'Work', ListTree], ['budget', 'Budget', Wallet], ['team', 'Team', Users]].map(([key, label, Icon]) => (
+          {[['overview', 'Overview', LayoutDashboard], ['work', 'Work', ListTree], ['budget', 'Budget', Wallet], ['resources', 'Resources', Package], ['team', 'Team', Users]].map(([key, label, Icon]) => (
             <button key={key} onClick={() => setTab(key)}
               className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition ${
                 tab === key ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
@@ -111,6 +111,9 @@ export default function ProjectDetailPage() {
         )}
         {tab === 'budget' && (
           <BudgetTab projectId={id} canEdit={canEdit} currency={project.currency} toast={toast} onChanged={load} />
+        )}
+        {tab === 'resources' && (
+          <ResourcesTab projectId={id} canEdit={canEdit} currency={project.currency} toast={toast} />
         )}
         {tab === 'team' && (
           <TeamTab project={project} users={users} canManageMembers={canManageMembers}
@@ -452,6 +455,220 @@ function BudgetTab({ projectId, canEdit, currency, toast, onChanged }) {
         )}
       </div>
     </div>
+  );
+}
+
+const RESOURCE_CATEGORIES = ['material','equipment','vehicle','tool','fuel','labour','subcontractor',
+  'consumable','reusable_asset','water','power','permit','document','staff','money'];
+const MOVEMENT_TYPES = ['receive','consume','return','waste','transfer','issue','store','inspect','adjust'];
+const CONDITIONS = ['new','refurbished','used','damaged','expired'];
+
+function ResourcesTab({ projectId, canEdit, currency, toast }) {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [showAdd, setShowAdd] = useState(false);
+  const [moveFor, setMoveFor] = useState(null);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const res = await fetchWithAuth(`/api/projects/${projectId}/resources`);
+      const json = await res.json();
+      if (json.success) setRows(json.data);
+    } finally { setLoading(false); }
+  }, [projectId]);
+  useEffect(() => { load(); }, [load]);
+
+  const del = async (rid) => {
+    if (!confirm('Delete this resource?')) return;
+    const res = await fetchWithAuth(`/api/projects/${projectId}/resources/${rid}`, { method: 'DELETE' });
+    const json = await res.json();
+    if (json.success) load(); else toast.error?.(json.error || 'Failed');
+  };
+
+  if (loading) return <div className="text-sm text-muted-foreground py-8">Loading resources…</div>;
+  return (
+    <div className="space-y-4">
+      {canEdit && (
+        <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-2 px-3 py-1.5 border border-border rounded-lg text-sm hover:bg-muted/50">
+          <Plus size={15} /> Add Resource
+        </button>
+      )}
+      {rows.length === 0 ? (
+        <div className="border border-dashed border-border rounded-xl py-12 text-center">
+          <Package className="w-9 h-9 mx-auto text-muted-foreground/50 mb-2" />
+          <p className="text-foreground font-medium">No resources yet</p>
+          <p className="text-sm text-muted-foreground mt-1">Add materials, equipment, labour, fuel and more.</p>
+        </div>
+      ) : (
+        <div className="bg-card border border-border rounded-xl overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="text-left text-xs text-muted-foreground border-b border-border">
+                <th className="py-2 px-3 font-medium">Resource</th>
+                <th className="py-2 px-3 font-medium">Category</th>
+                <th className="py-2 px-3 font-medium text-right">Available</th>
+                <th className="py-2 px-3 font-medium text-right">Required</th>
+                <th className="py-2 px-3 font-medium text-right">Used / Wasted</th>
+                <th className="py-2 px-3 font-medium text-right">Unit cost</th>
+                <th className="py-2 px-3 font-medium">Condition</th>
+                <th className="py-2 px-3"></th>
+              </tr>
+            </thead>
+            <tbody>
+              {rows.map((r) => {
+                const short = Number(r.quantity_available) < Number(r.quantity_required);
+                return (
+                  <tr key={r.id} className="border-b border-border/60 last:border-0">
+                    <td className="py-2 px-3">
+                      <div className="font-medium text-foreground">{r.name}</div>
+                      {(r.manufacturer || r.supplier_name) && <div className="text-xs text-muted-foreground">{[r.manufacturer, r.supplier_name].filter(Boolean).join(' · ')}</div>}
+                    </td>
+                    <td className="py-2 px-3"><span className="px-2 py-0.5 rounded-full text-xs bg-muted text-muted-foreground">{r.category.replace(/_/g, ' ')}</span></td>
+                    <td className={`py-2 px-3 text-right tabular-nums ${short ? 'text-amber-600 font-medium' : 'text-foreground'}`}>{Number(r.quantity_available)} {r.unit_of_measure || ''}</td>
+                    <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{Number(r.quantity_required)}</td>
+                    <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{Number(r.quantity_consumed)} / {Number(r.quantity_wasted)}</td>
+                    <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{currency} {Number(r.unit_cost).toLocaleString()}</td>
+                    <td className="py-2 px-3">{r.condition ? <span className="text-xs text-muted-foreground">{r.condition}</span> : '—'}</td>
+                    <td className="py-2 px-3">
+                      {canEdit && (
+                        <div className="flex items-center gap-1 justify-end">
+                          <button onClick={() => setMoveFor(r)} title="Record movement" className="p-1.5 rounded hover:bg-muted text-muted-foreground hover:text-foreground"><ArrowLeftRight size={14} /></button>
+                          <button onClick={() => del(r.id)} title="Delete" className="p-1.5 rounded hover:bg-red-100 text-muted-foreground hover:text-red-600"><Trash2 size={14} /></button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {showAdd && <AddResourceModal projectId={projectId} currency={currency} onClose={() => setShowAdd(false)} onAdded={() => { setShowAdd(false); load(); }} toast={toast} />}
+      {moveFor && <MovementModal projectId={projectId} resource={moveFor} onClose={() => setMoveFor(null)} onDone={() => { setMoveFor(null); load(); }} toast={toast} />}
+    </div>
+  );
+}
+
+function AddResourceModal({ projectId, currency, onClose, onAdded, toast }) {
+  const [f, setF] = useState({ name: '', category: 'material', unit_of_measure: '', quantity_required: '', quantity_available: '', unit_cost: '', condition: 'new', manufacturer: '', grade: '', batch_number: '', expiry_date: '' });
+  const [saving, setSaving] = useState(false);
+  const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }));
+
+  const submit = async () => {
+    if (!f.name.trim()) { toast.error?.('Name is required'); return; }
+    setSaving(true);
+    try {
+      const attributes = {};
+      if (f.category === 'material') {
+        if (f.grade) attributes.grade = f.grade;
+        if (f.batch_number) attributes.batch_number = f.batch_number;
+        if (f.expiry_date) attributes.expiry_date = f.expiry_date;
+      }
+      const res = await fetchWithAuth(`/api/projects/${projectId}/resources`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: f.name, category: f.category, unit_of_measure: f.unit_of_measure || null,
+          quantity_required: Number(f.quantity_required) || 0, quantity_available: Number(f.quantity_available) || 0,
+          unit_cost: Number(f.unit_cost) || 0, currency, condition: f.condition || null,
+          manufacturer: f.manufacturer || null, attributes,
+        }),
+      });
+      const json = await res.json();
+      if (json.success) { toast.success?.('Resource added'); onAdded(); } else toast.error?.(json.error || 'Failed');
+    } catch { toast.error?.('Failed'); } finally { setSaving(false); }
+  };
+
+  return (
+    <Modal isOpen onClose={onClose} title="Add Resource" size="lg"
+      footer={<div className="flex justify-end gap-2">
+        <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted/50">Cancel</button>
+        <button onClick={submit} disabled={saving} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium disabled:opacity-60">{saving ? 'Adding…' : 'Add'}</button>
+      </div>}>
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="col-span-2"><label className="block text-sm font-medium mb-1">Name *</label><input className={field} value={f.name} onChange={set('name')} autoFocus placeholder="e.g. Cement (Tororo 32.5N)" /></div>
+          <div><label className="block text-sm font-medium mb-1">Category</label>
+            <select className={field} value={f.category} onChange={set('category')}>{RESOURCE_CATEGORIES.map(c => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}</select></div>
+          <div><label className="block text-sm font-medium mb-1">Unit of measure</label><input className={field} value={f.unit_of_measure} onChange={set('unit_of_measure')} placeholder="bags, kg, litres, hrs" /></div>
+          <div><label className="block text-sm font-medium mb-1">Qty required</label><input type="number" className={field} value={f.quantity_required} onChange={set('quantity_required')} /></div>
+          <div><label className="block text-sm font-medium mb-1">Qty available</label><input type="number" className={field} value={f.quantity_available} onChange={set('quantity_available')} /></div>
+          <div><label className="block text-sm font-medium mb-1">Unit cost ({currency})</label><input type="number" className={field} value={f.unit_cost} onChange={set('unit_cost')} /></div>
+          <div><label className="block text-sm font-medium mb-1">Condition</label>
+            <select className={field} value={f.condition} onChange={set('condition')}>{CONDITIONS.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+          <div className="col-span-2"><label className="block text-sm font-medium mb-1">Manufacturer / brand</label><input className={field} value={f.manufacturer} onChange={set('manufacturer')} /></div>
+        </div>
+        {f.category === 'material' && (
+          <div className="grid grid-cols-3 gap-3 border-t border-border pt-3">
+            <div className="col-span-3 text-xs font-semibold text-muted-foreground uppercase tracking-wide">Material intelligence</div>
+            <div><label className="block text-sm font-medium mb-1">Grade</label><input className={field} value={f.grade} onChange={set('grade')} placeholder="32.5N" /></div>
+            <div><label className="block text-sm font-medium mb-1">Batch no.</label><input className={field} value={f.batch_number} onChange={set('batch_number')} /></div>
+            <div><label className="block text-sm font-medium mb-1">Expiry</label><input type="date" className={field} value={f.expiry_date} onChange={set('expiry_date')} /></div>
+          </div>
+        )}
+      </div>
+    </Modal>
+  );
+}
+
+function MovementModal({ projectId, resource, onClose, onDone, toast }) {
+  const [type, setType] = useState('receive');
+  const [qty, setQty] = useState('');
+  const [notes, setNotes] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [history, setHistory] = useState([]);
+
+  useEffect(() => {
+    fetchWithAuth(`/api/projects/${projectId}/resources/${resource.id}/movements`)
+      .then(r => r.json()).then(j => j.success && setHistory(j.data)).catch(() => {});
+  }, [projectId, resource.id]);
+
+  const submit = async () => {
+    if (!(Number(qty) >= 0) || qty === '') { toast.error?.('Enter a quantity'); return; }
+    setSaving(true);
+    try {
+      const res = await fetchWithAuth(`/api/projects/${projectId}/resources/${resource.id}/movements`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ movement_type: type, quantity: Number(qty), notes: notes || null }),
+      });
+      const json = await res.json();
+      if (json.success) { toast.success?.('Movement recorded'); onDone(); } else toast.error?.(json.error || 'Failed');
+    } catch { toast.error?.('Failed'); } finally { setSaving(false); }
+  };
+
+  return (
+    <Modal isOpen onClose={onClose} title={`Movement — ${resource.name}`}
+      subtitle={`Available: ${Number(resource.quantity_available)} ${resource.unit_of_measure || ''}`}
+      footer={<div className="flex justify-end gap-2">
+        <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted/50">Close</button>
+        <button onClick={submit} disabled={saving} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium disabled:opacity-60">{saving ? 'Saving…' : 'Record'}</button>
+      </div>}>
+      <div className="space-y-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div><label className="block text-sm font-medium mb-1">Type</label>
+            <select className={field} value={type} onChange={(e) => setType(e.target.value)}>{MOVEMENT_TYPES.map(t => <option key={t} value={t}>{t}</option>)}</select></div>
+          <div><label className="block text-sm font-medium mb-1">Quantity</label><input type="number" className={field} value={qty} onChange={(e) => setQty(e.target.value)} autoFocus /></div>
+        </div>
+        <div><label className="block text-sm font-medium mb-1">Notes</label><input className={field} value={notes} onChange={(e) => setNotes(e.target.value)} /></div>
+        <p className="text-xs text-muted-foreground">receive +avail · consume/waste −avail · return +avail · adjust sets available · others are ledger-only.</p>
+
+        {history.length > 0 && (
+          <div className="border-t border-border pt-2">
+            <div className="text-xs font-semibold text-muted-foreground uppercase mb-1">History</div>
+            <div className="max-h-40 overflow-y-auto space-y-1">
+              {history.map((m) => (
+                <div key={m.id} className="flex items-center justify-between text-xs">
+                  <span className="text-foreground">{m.movement_type}</span>
+                  <span className="text-muted-foreground">{Number(m.quantity)} · {new Date(m.moved_at).toLocaleDateString()}</span>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+    </Modal>
   );
 }
 
