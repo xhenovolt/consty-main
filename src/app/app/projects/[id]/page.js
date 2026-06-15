@@ -6,7 +6,7 @@ import Link from 'next/link';
 import {
   ArrowLeft, Plus, Trash2, Users, ListTree, LayoutDashboard, ShieldCheck,
   CalendarDays, Wallet, Package, ArrowLeftRight, ShoppingCart, AlertTriangle, Stethoscope, CheckCircle2,
-  ShieldAlert, ClipboardCheck,
+  ShieldAlert, ClipboardCheck, Gavel,
 } from 'lucide-react';
 import { fetchWithAuth } from '@/lib/fetch-client';
 import { useToast } from '@/components/ui/Toast';
@@ -96,7 +96,7 @@ export default function ProjectDetailPage() {
 
         {/* Tabs (horizontally scrollable on mobile) */}
         <div className="flex gap-1 border-b border-border mb-5 overflow-x-auto scrollbar-thin">
-          {[['overview', 'Overview', LayoutDashboard], ['work', 'Work', ListTree], ['budget', 'Budget', Wallet], ['resources', 'Resources', Package], ['procurement', 'Procurement', ShoppingCart], ['blockers', 'Blockers', AlertTriangle], ['risk', 'Risk', ShieldAlert], ['quality', 'Quality', ClipboardCheck], ['team', 'Team', Users]].map(([key, label, Icon]) => (
+          {[['overview', 'Overview', LayoutDashboard], ['work', 'Work', ListTree], ['budget', 'Budget', Wallet], ['resources', 'Resources', Package], ['procurement', 'Procurement', ShoppingCart], ['blockers', 'Blockers', AlertTriangle], ['risk', 'Risk', ShieldAlert], ['quality', 'Quality', ClipboardCheck], ['governance', 'Closeout', Gavel], ['team', 'Team', Users]].map(([key, label, Icon]) => (
             <button key={key} onClick={() => setTab(key)}
               className={`inline-flex items-center gap-2 px-4 py-2 text-sm font-medium border-b-2 -mb-px transition shrink-0 whitespace-nowrap ${
                 tab === key ? 'border-primary text-foreground' : 'border-transparent text-muted-foreground hover:text-foreground'}`}>
@@ -127,6 +127,9 @@ export default function ProjectDetailPage() {
         )}
         {tab === 'quality' && (
           <QualityTab projectId={id} canEdit={canEdit} items={items} users={users} toast={toast} />
+        )}
+        {tab === 'governance' && (
+          <GovernanceTab projectId={id} canEdit={canEdit} currency={project.currency} toast={toast} onChanged={load} />
         )}
         {tab === 'team' && (
           <TeamTab project={project} users={users} canManageMembers={canManageMembers}
@@ -1343,6 +1346,165 @@ function AddDefectModal({ projectId, items, users, onClose, onDone, toast }) {
         <div className="grid grid-cols-2 gap-3">
           <div><label className="block text-sm font-medium mb-1">Assign to</label><select className={field} value={f.assigned_to} onChange={set('assigned_to')}><option value="">— Unassigned —</option>{users.map(u => <option key={u.id} value={u.id}>{u.name || u.email}</option>)}</select></div>
           <label className="flex items-center gap-2 text-sm pt-6"><input type="checkbox" checked={f.rework_required} onChange={(e) => setF(p => ({ ...p, rework_required: e.target.checked }))} /> Rework required</label>
+        </div>
+      </div>
+    </Modal>
+  );
+}
+
+const CO_STATUS_STYLE = {
+  draft: 'bg-muted text-muted-foreground',
+  submitted: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  approved: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+  rejected: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300',
+};
+
+function GovernanceTab({ projectId, canEdit, currency, toast, onChanged }) {
+  const [cos, setCos] = useState([]);
+  const [closure, setClosure] = useState(null);
+  const [computed, setComputed] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [showCO, setShowCO] = useState(false);
+  const [lessons, setLessons] = useState('');
+  const money = (v) => `${currency} ${Number(v || 0).toLocaleString()}`;
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    try {
+      const [c, cl] = await Promise.all([
+        fetchWithAuth(`/api/projects/${projectId}/change-orders`).then(x => x.json()),
+        fetchWithAuth(`/api/projects/${projectId}/closure`).then(x => x.json()),
+      ]);
+      if (c.success) setCos(c.data);
+      if (cl.success) { setClosure(cl.data.closure); setComputed(cl.data.computed); if (cl.data.closure?.lessons_learned) setLessons(cl.data.closure.lessons_learned); }
+    } finally { setLoading(false); }
+  }, [projectId]);
+  useEffect(() => { load(); }, [load]);
+
+  const setCOStatus = async (coId, status) => {
+    const res = await fetchWithAuth(`/api/projects/${projectId}/change-orders/${coId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ status }) });
+    const j = await res.json(); if (j.success) { toast.success?.(`Change order ${status}`); load(); onChanged?.(); } else toast.error?.(j.error || 'Failed');
+  };
+  const delCO = async (coId) => {
+    const res = await fetchWithAuth(`/api/projects/${projectId}/change-orders/${coId}`, { method: 'DELETE' });
+    const j = await res.json(); if (j.success) load(); else toast.error?.(j.error || 'Failed');
+  };
+  const saveClosure = async (accept) => {
+    if (accept && !confirm('Accept and CLOSE this project? This records client sign-off and sets the project to closed.')) return;
+    const res = await fetchWithAuth(`/api/projects/${projectId}/closure`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ lessons_learned: lessons || null, accept }) });
+    const j = await res.json(); if (j.success) { toast.success?.(accept ? 'Project closed' : 'Closure saved'); load(); onChanged?.(); } else toast.error?.(j.error || 'Failed');
+  };
+
+  if (loading) return <div className="text-sm text-muted-foreground py-8">Loading…</div>;
+  return (
+    <div className="space-y-6">
+      {/* Change orders */}
+      <section>
+        <div className="flex items-center justify-between mb-2">
+          <h3 className="text-sm font-semibold text-foreground">Change orders</h3>
+          {canEdit && <button onClick={() => setShowCO(true)} className="inline-flex items-center gap-1 text-sm text-primary"><Plus size={14} /> New change order</button>}
+        </div>
+        {cos.length === 0 ? <p className="text-sm text-muted-foreground">No change orders.</p> : (
+          <div className="bg-card border border-border rounded-xl divide-y divide-border">
+            {cos.map((co) => (
+              <div key={co.id} className="flex items-start gap-3 p-3">
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="font-medium text-foreground text-sm">{co.title}</span>
+                    <span className={`px-2 py-0.5 rounded-full text-xs font-medium ${CO_STATUS_STYLE[co.status] || 'bg-muted'}`}>{co.status}</span>
+                  </div>
+                  {co.requested_change && <p className="text-xs text-muted-foreground mt-0.5">{co.requested_change}</p>}
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Cost {money(co.cost_impact)} · {Number(co.time_impact_days) >= 0 ? '+' : ''}{co.time_impact_days}d
+                    {co.approved_by_name ? ` · approved by ${co.approved_by_name}` : ''}
+                  </p>
+                </div>
+                {canEdit && (
+                  <div className="flex items-center gap-1 shrink-0">
+                    {co.status !== 'approved' && co.status !== 'rejected' && (
+                      <>
+                        <button onClick={() => setCOStatus(co.id, 'approved')} className="px-2 py-1 text-xs rounded bg-emerald-600 text-white">Approve</button>
+                        <button onClick={() => setCOStatus(co.id, 'rejected')} className="px-2 py-1 text-xs rounded border border-border">Reject</button>
+                      </>
+                    )}
+                    <button onClick={() => delCO(co.id)} className="p-1.5 rounded hover:bg-red-100 text-muted-foreground hover:text-red-600"><Trash2 size={14} /></button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
+        <p className="text-xs text-muted-foreground mt-1">Approving a change order adjusts the budget allocation and shifts the planned end date.</p>
+      </section>
+
+      {/* Closure */}
+      <section>
+        <h3 className="text-sm font-semibold text-foreground mb-2">Closure & handover</h3>
+        {closure?.status === 'closed' && (
+          <div className="flex items-center gap-2 text-sm text-emerald-700 dark:text-emerald-300 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-200 dark:border-emerald-800 rounded-lg px-3 py-2 mb-3">
+            <CheckCircle2 size={15} /> Accepted {closure.client_accepted_at ? `on ${new Date(closure.client_accepted_at).toLocaleDateString()}` : ''}{closure.accepted_by_name ? ` by ${closure.accepted_by_name}` : ''}.
+          </div>
+        )}
+        <div className="grid gap-3 grid-cols-2 lg:grid-cols-4 mb-3">
+          <Stat icon={Wallet} label="Final cost" value={money(computed?.final_cost)} />
+          <Stat icon={Wallet} label="Funding" value={money(computed?.funding_total)} />
+          <Stat icon={Wallet} label="Profit / Loss" value={money(computed?.pnl_result)} />
+          <Stat icon={AlertTriangle} label="Unresolved (issues+blockers)" value={computed?.unresolved_issue_count ?? 0} />
+        </div>
+        <div className="grid gap-3 sm:grid-cols-2 mb-3">
+          <div className="bg-card border border-border rounded-xl p-3">
+            <div className="text-xs text-muted-foreground mb-1">Remaining materials</div>
+            {(computed?.remaining_materials?.length ?? 0) === 0 ? <p className="text-sm text-muted-foreground">None</p> :
+              <ul className="text-sm text-foreground space-y-0.5">{computed.remaining_materials.map((m, i) => <li key={i}>{m.name}: {Number(m.qty)} {m.unit || ''}</li>)}</ul>}
+          </div>
+          <div className="bg-card border border-border rounded-xl p-3">
+            <div className="text-xs text-muted-foreground mb-1">Returned assets</div>
+            {(computed?.returned_assets?.length ?? 0) === 0 ? <p className="text-sm text-muted-foreground">None</p> :
+              <ul className="text-sm text-foreground space-y-0.5">{computed.returned_assets.map((a, i) => <li key={i}>{a.name}: {Number(a.returned)}</li>)}</ul>}
+          </div>
+        </div>
+        <label className="block text-sm font-medium mb-1">Lessons learned</label>
+        <textarea className={`${field} resize-none`} rows={3} value={lessons} onChange={(e) => setLessons(e.target.value)} disabled={!canEdit} />
+        {canEdit && (
+          <div className="flex flex-wrap gap-2 mt-3">
+            <button onClick={() => saveClosure(false)} className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted/50">Save close-out</button>
+            {closure?.status !== 'closed' && (
+              <button onClick={() => saveClosure(true)} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium">Accept &amp; close project</button>
+            )}
+          </div>
+        )}
+      </section>
+
+      {showCO && <NewChangeOrderModal projectId={projectId} currency={currency} onClose={() => setShowCO(false)} onDone={() => { setShowCO(false); load(); }} toast={toast} />}
+    </div>
+  );
+}
+
+function NewChangeOrderModal({ projectId, currency, onClose, onDone, toast }) {
+  const [f, setF] = useState({ title: '', requested_change: '', reason: '', cost_impact: '', time_impact_days: '' });
+  const [saving, setSaving] = useState(false);
+  const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }));
+  const submit = async () => {
+    if (!f.title.trim()) { toast.error?.('Title required'); return; }
+    setSaving(true);
+    try {
+      const res = await fetchWithAuth(`/api/projects/${projectId}/change-orders`, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...f, cost_impact: Number(f.cost_impact) || 0, time_impact_days: Number(f.time_impact_days) || 0 }) });
+      const j = await res.json(); if (j.success) { toast.success?.('Change order created'); onDone(); } else toast.error?.(j.error || 'Failed');
+    } finally { setSaving(false); }
+  };
+  return (
+    <Modal isOpen onClose={onClose} title="New Change Order"
+      footer={<div className="flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-border">Cancel</button><button onClick={submit} disabled={saving} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium disabled:opacity-60">{saving ? 'Creating…' : 'Create'}</button></div>}>
+      <div className="space-y-4">
+        <div><label className="block text-sm font-medium mb-1">Title *</label><input className={field} value={f.title} onChange={set('title')} autoFocus /></div>
+        <div><label className="block text-sm font-medium mb-1">Requested change</label><textarea className={`${field} resize-none`} rows={2} value={f.requested_change} onChange={set('requested_change')} /></div>
+        <div><label className="block text-sm font-medium mb-1">Reason</label><input className={field} value={f.reason} onChange={set('reason')} /></div>
+        <div className="grid grid-cols-2 gap-3">
+          <div><label className="block text-sm font-medium mb-1">Cost impact ({currency})</label><input type="number" className={field} value={f.cost_impact} onChange={set('cost_impact')} placeholder="+/-" /></div>
+          <div><label className="block text-sm font-medium mb-1">Time impact (days)</label><input type="number" className={field} value={f.time_impact_days} onChange={set('time_impact_days')} placeholder="+/-" /></div>
         </div>
       </div>
     </Modal>

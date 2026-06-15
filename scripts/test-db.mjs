@@ -198,6 +198,28 @@ async function main() {
     const { rows: [def] } = await client.query(
       `INSERT INTO defects (project_id, description, severity, rework_required) VALUES ($1,'Honeycomb in slab','high',true) RETURNING status, rework_required`, [pid]);
     assert(def.status === 'open' && def.rework_required === true, 'defect logged (open, rework_required)');
+
+    // ── Change order budget effect (mirrors approve side-effect) ──────
+    await client.query(`INSERT INTO change_orders (project_id, title, cost_impact, time_impact_days, status) VALUES ($1,'Extra rebar',200,7,'submitted')`, [pid]);
+    const allocBefore = Number((await client.query(`SELECT allocated_amount FROM project_budgets WHERE project_id=$1`, [pid])).rows[0].allocated_amount);
+    await client.query(`UPDATE project_budgets SET allocated_amount = allocated_amount + 200 WHERE project_id=$1`, [pid]); // approve → +cost
+    const allocAfter = Number((await client.query(`SELECT allocated_amount FROM project_budgets WHERE project_id=$1`, [pid])).rows[0].allocated_amount);
+    assert(allocAfter === allocBefore + 200, `approving change order raises allocated by cost_impact (${allocBefore}→${allocAfter})`);
+    await expectError(
+      () => client.query(`INSERT INTO change_orders (project_id, title, status) VALUES ($1,'x','not_a_status')`, [pid]),
+      'invalid change_order status rejected by CHECK');
+
+    // ── Closure → project closed (mirrors accept) ────────────────────
+    await client.query(
+      `INSERT INTO project_closures (project_id, final_cost, pnl_result, status, client_accepted_at, accepted_by)
+       VALUES ($1,0,0,'closed',now(),$2)
+       ON CONFLICT (project_id) DO UPDATE SET status='closed', client_accepted_at=now()`, [pid, uid]);
+    await client.query(`UPDATE projects SET status='closed', actual_end=CURRENT_DATE WHERE id=$1`, [pid]);
+    const pstatus = (await client.query(`SELECT status FROM projects WHERE id=$1`, [pid])).rows[0].status;
+    assert(pstatus === 'closed', `accepting closure closes the project (got ${pstatus})`);
+    await expectError(
+      () => client.query(`INSERT INTO project_closures (project_id, final_cost) VALUES ($1, 0)`, [pid]),
+      'one closure per project enforced by UNIQUE');
   } finally {
     await client.query('ROLLBACK'); // nothing persists
   }
