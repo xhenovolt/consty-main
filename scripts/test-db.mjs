@@ -220,6 +220,20 @@ async function main() {
     await expectError(
       () => client.query(`INSERT INTO project_closures (project_id, final_cost) VALUES ($1, 0)`, [pid]),
       'one closure per project enforced by UNIQUE');
+
+    // ── Dashboard aggregation (mirrors /api/dashboard/projects) ──────
+    // Fresh project with one open critical blocker + one short resource.
+    const { rows: [dp] } = await client.query(
+      `INSERT INTO projects (code,name,type,status,created_by) VALUES ($1,'Dash','construction','active',$2) RETURNING id`,
+      [`DASH-${Date.now()}`, uid]);
+    await client.query(`INSERT INTO blockers (project_id,blocker_type,severity,status,detected_by) VALUES ($1,'missing_budget','critical','open','auto')`, [dp.id]);
+    await client.query(`INSERT INTO resources (project_id,name,category,quantity_required,quantity_available) VALUES ($1,'Sand','material',50,10)`, [dp.id]);
+    const stalled = Number((await client.query(
+      `SELECT count(DISTINCT project_id)::int n FROM blockers WHERE project_id=ANY($1::uuid[]) AND status<>'resolved' AND severity IN ('high','critical')`, [[dp.id]])).rows[0].n);
+    assert(stalled === 1, `dashboard: stalled-project aggregate counts 1 (got ${stalled})`);
+    const shortages = Number((await client.query(
+      `SELECT count(*)::int n FROM resources WHERE project_id=ANY($1::uuid[]) AND quantity_available < quantity_required`, [[dp.id]])).rows[0].n);
+    assert(shortages === 1, `dashboard: resource-shortage aggregate counts 1 (got ${shortages})`);
   } finally {
     await client.query('ROLLBACK'); // nothing persists
   }
