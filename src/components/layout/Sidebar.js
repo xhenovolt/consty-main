@@ -67,14 +67,12 @@ export default function Sidebar() {
   const pathname = usePathname();
   const [isCollapsed, setIsCollapsed] = useState(false);
   const [expandedSections, setExpandedSections] = useState({
-    'Project Pipeline': true,
     Projects: true,
+    Documents: true,
     Finance: true,
-    'Sites & Systems': false,
-    Operations: false,
-    Intelligence: false,
+    Approvals: false,
+    Team: false,
     Admin: false,
-    'DRAIS Control': false,
   });
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -345,8 +343,8 @@ export default function Sidebar() {
               </div>
               {[
                 { label: 'New Project', icon: Target, href: '/app/projects?new=1', desc: 'Start a new project' },
-                { label: 'Log Payment', icon: Wallet, href: '/app/payments?new=1', desc: 'Record a client payment' },
-                { label: 'Follow-up', icon: FileText, href: '/app/followups?new=1', desc: 'Add a note or follow-up' },
+                { label: 'Log Expense', icon: Wallet, href: '/app/finance/expenses', desc: 'Record an expense' },
+                { label: 'New Document', icon: FileText, href: '/app/admin/documents', desc: 'Create or upload a document' },
               ].map(item => (
                 <Link
                   key={item.label}

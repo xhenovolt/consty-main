@@ -22,6 +22,11 @@ export const DEFAULT_FEATURE_FLAGS = {
   'module.pricing': false,
   'module.intelligence': false,
   'module.drais': false,
+  // CRM sales funnel — reversible (a construction firm still bids for work)
+  'module.business_dev': false,
+  // Inherited company-OS modules parked until rebuilt (items/products/media →
+  // catalog/inventory/documents in later phases; ops/systems/etc.)
+  'module.legacy': false,
 };
 
 export function isModuleEnabled(key, flags = DEFAULT_FEATURE_FLAGS) {

@@ -54,59 +54,13 @@ import {
  */
 export const menuItems = [
   // === PRIMARY ===
-  {
-    label: 'Dashboard',
-    href: '/app/dashboard',
-    icon: Home,
-    category: 'primary',
-    permission: 'dashboard.view',
-  },
-  {
-    label: 'Command Center',
-    href: '/app/command-center',
-    icon: Zap,
-    category: 'primary',
-    permission: 'command_center.view',
-    minHierarchy: 3,
-  },
-  {
-    label: 'Activity',
-    href: '/app/activity',
-    icon: Activity,
-    category: 'primary',
-    module: 'activity_logs',
-    permission: 'activity_logs.view',
-  },
-  {
-    label: 'Notifications',
-    href: '/app/notifications',
-    icon: Bell,
-    category: 'primary',
-    // Visible to all authenticated users — no permission required
-  },
-  {
-    label: 'Messages',
-    href: '/app/communication',
-    icon: MessageCircle,
-    category: 'primary',
-    permission: 'communication.view',
-  },
+  { label: 'Dashboard', href: '/app/dashboard', icon: Home, category: 'primary', permission: 'dashboard.view' },
+  { label: 'Activity', href: '/app/activity', icon: Activity, category: 'primary', module: 'activity_logs', permission: 'activity_logs.view' },
+  { label: 'Notifications', href: '/app/notifications', icon: Bell, category: 'primary' },
+  { label: 'Messages', href: '/app/communication', icon: MessageCircle, category: 'primary', permission: 'communication.view' },
 
-  // ───────────────────────── PLAN ─────────────────────────
-  { kind: 'header', label: 'Plan' },
-  {
-    label: 'Project Pipeline',
-    icon: Target,
-    category: 'sections',
-    module: 'pipeline',
-    submenu: [
-      { label: 'Bid Pipeline', href: '/app/pipeline', description: 'Visual view of incoming opportunities and bids', permission: 'pipeline.view' },
-      { label: 'Leads', href: '/app/prospects', description: 'Track and qualify new opportunities', permission: 'prospects.view' },
-      { label: 'Bids & Proposals', href: '/app/proposals', description: 'Client proposals, bids, and submissions', permission: 'prospects.view' },
-      { label: 'Follow-ups', href: '/app/followups', description: 'Scheduled commercial touchpoints', permission: 'prospects.view' },
-      { label: 'Clients', href: '/app/clients', description: 'Awarded and active clients', permission: 'clients.view' },
-    ],
-  },
+  // ──────────────────────── DELIVER ───────────────────────
+  { kind: 'header', label: 'Deliver' },
   {
     label: 'Projects',
     icon: Briefcase,
@@ -115,60 +69,38 @@ export const menuItems = [
     submenu: [
       { label: 'All Projects', href: '/app/projects', description: 'Plan, govern and execute project work', permission: 'projects.view' },
       { label: 'New Project', href: '/app/projects?new=1', description: 'Create a new project', permission: 'projects.create' },
-      { label: 'Site Tasks', href: '/app/obligations', description: 'Track obligations, deliverables, and site actions', permission: 'obligations.view' },
-      { label: 'Payments', href: '/app/payments', description: 'Client payment tracking', permission: 'payments.view' },
-      { label: 'Invoices', href: '/app/invoices', description: 'Invoices, certificates, and billing PDFs', permission: 'invoices.view' },
-      { label: 'Budget Allocations', href: '/app/allocations', description: 'Project fund allocation tracking', permission: 'allocations.view' },
     ],
   },
   {
-    label: 'Services',
-    href: '/app/services',
-    icon: Layers,
-    category: 'sections',
-    module: 'services',
-    permission: 'services.view',
-  },
-
-  // ─────────────────────── EXECUTE ────────────────────────
-  { kind: 'header', label: 'Execute' },
-  {
-    label: 'Sites & Systems',
-    icon: Monitor,
-    category: 'sections',
-    module: 'systems',
-    submenu: [
-      { label: 'Site Systems', href: '/app/systems', description: 'Project systems, tools, and delivery infrastructure', permission: 'systems.view' },
-      { label: 'Licenses', href: '/app/licenses', description: 'Active software and access licenses', permission: 'licenses.view' },
-      { label: 'Operations Log', href: '/app/operations', description: 'Daily site and operations log', permission: 'operations.view' },
-      { label: 'Platform Costs', href: '/app/system-costs', description: 'Technology and platform overhead tracking', permission: 'systems.view' },
-    ],
-  },
-  {
-    label: 'Operations',
-    icon: Building2,
+    label: 'Approvals',
+    icon: ClipboardCheck,
     category: 'sections',
     submenu: [
-      { label: 'Team Members', href: '/app/staff', description: 'Field and office team members', permission: 'staff.view' },
-      { label: 'Org Hierarchy', href: '/app/org-hierarchy', description: 'Department & role tree', permission: 'staff.view' },
-      { label: 'Control Tower', href: '/app/control-tower', description: 'Cross-project visibility and structural health', permission: 'staff.view' },
-      { label: 'Items', href: '/app/items', description: 'Materials, tools, and shared assets', permission: 'assets.view' },
-      { label: 'Knowledge Base', href: '/app/knowledge', description: 'Standard procedures and project knowledge', permission: 'knowledge.view' },
-      { label: 'Liabilities', href: '/app/liabilities', description: 'Commitments, retention, and debts', permission: 'finance.view' },
-      { label: 'Offerings', href: '/app/offerings', description: 'Service and package catalog', permission: 'offerings.view' },
-      { label: 'Media', href: '/app/media', description: 'Site photos, files, and project media', permission: 'media.view' },
+      { label: 'Pending Approvals', href: '/app/admin/approvals', description: 'Requests awaiting your decision', permission: 'approvals.manage' },
+      { label: 'Approval Pipeline', href: '/app/approval-pipeline', description: 'Visual approval workflow', permission: 'approvals.manage' },
     ],
   },
-  {
-    label: 'Materials',
-    href: '/app/products',
-    icon: Package,
-    category: 'sections',
-    module: 'products',
-    permission: 'products.view',
-  },
+  { label: 'Reports', href: '/app/reports', icon: BarChart3, category: 'sections', module: 'reports', permission: 'reports.view' },
 
-  // ─────────────────────── FINANCE ────────────────────────
+  // ──────────────────────── RECORDS ───────────────────────
+  { kind: 'header', label: 'Records' },
+  {
+    label: 'Documents',
+    icon: FileText,
+    category: 'sections',
+    module: 'documents',
+    permission: 'documents.view',
+    submenu: [
+      { label: 'Overview',            href: '/app/admin/documents',           description: 'Document module dashboard',           permission: 'documents.view' },
+      { label: 'Templates',           href: '/app/admin/documents/templates', description: 'Manage document templates',          permission: 'documents.manage' },
+      { label: 'Generated Documents', href: '/app/admin/documents/generated', description: 'View and manage generated documents', permission: 'documents.view' },
+      { label: 'Verification Portal', href: '/app/admin/documents/verify',    description: 'Look up a document verification ID',  permission: 'documents.view' },
+      { label: 'Settings',            href: '/app/admin/documents/settings',  description: 'Branding, signatures, stamps',       permission: 'documents.manage' },
+    ],
+  },
+  { label: 'Knowledge Base', href: '/app/knowledge', icon: BookOpen, category: 'sections', module: 'knowledge', permission: 'knowledge.view' },
+
+  // ──────────────────────── FINANCE ───────────────────────
   { kind: 'header', label: 'Finance' },
   {
     label: 'Finance',
@@ -176,12 +108,12 @@ export const menuItems = [
     category: 'sections',
     module: 'finance',
     submenu: [
-      { label: 'Overview', href: '/app/finance', description: 'Financial dashboard', permission: 'finance.view' },
+      { label: 'Overview', href: '/app/finance', description: 'Company financial overview', permission: 'finance.view' },
       { label: 'Accounts', href: '/app/finance/accounts', description: 'Bank, cash, and collections accounts', permission: 'accounts.view' },
-      { label: 'Ledger', href: '/app/finance/ledger', description: 'Project transaction history', permission: 'finance.view' },
+      { label: 'Ledger', href: '/app/finance/ledger', description: 'Transaction history', permission: 'finance.view' },
       { label: 'Expenses', href: '/app/finance/expenses', description: 'Track site and office spending', permission: 'expenses.view' },
       { label: 'Transfers', href: '/app/finance/transfers', description: 'Move funds between accounts', permission: 'finance.view' },
-      { label: 'Budgets', href: '/app/finance/budgets', description: 'Project and overhead budget limits', permission: 'budgets.view' },
+      { label: 'Company Budgets', href: '/app/finance/budgets', description: 'Overhead and company budget limits', permission: 'budgets.view' },
       { label: '---', href: '#', description: '', permission: null },
       { label: 'Banking', href: '/app/finance/banking', description: 'Internal cash and banking controls', permission: 'finance.manage' },
       { label: 'Employee Loans', href: '/app/finance/loans', description: 'Staff loan tracking', permission: 'finance.manage' },
@@ -189,96 +121,21 @@ export const menuItems = [
     ],
   },
 
-  // ──────────────────── EVIDENCE & DOCS ───────────────────
-  { kind: 'header', label: 'Evidence & Docs' },
+  // ───────────────────── ORGANISATION ─────────────────────
+  { kind: 'header', label: 'Organisation' },
   {
-    label: 'Organization Documents',
-    icon: FileText,
+    label: 'Team',
+    icon: Users,
     category: 'sections',
-    module: 'documents',
-    permission: 'documents.view',
     submenu: [
-      { label: 'Overview',            href: '/app/admin/documents',           description: 'Document module dashboard',         permission: 'documents.view' },
-      { label: 'Templates',           href: '/app/admin/documents/templates', description: 'Manage document templates',        permission: 'documents.manage' },
-      { label: 'Generated Documents', href: '/app/admin/documents/generated', description: 'View and manage generated documents', permission: 'documents.view' },
-      { label: 'Verification Portal', href: '/app/admin/documents/verify',    description: 'Look up a document verification ID',  permission: 'documents.view' },
-      { label: 'Settings',            href: '/app/admin/documents/settings',  description: 'Branding, signatures, stamps',     permission: 'documents.manage' },
+      { label: 'Team Members', href: '/app/staff', description: 'Field and office team members', permission: 'staff.view' },
+      { label: 'Org Hierarchy', href: '/app/org-hierarchy', description: 'Department & role tree', permission: 'staff.view' },
     ],
   },
-  {
-    label: 'Docs',
-    href: '/app/docs',
-    icon: BookOpen,
-    category: 'sections',
-    module: 'knowledge',
-    permission: 'knowledge.view',
-  },
-  {
-    label: 'Designs',
-    icon: Palette,
-    category: 'sections',
-    module: 'designs',
-    featureFlag: 'module.designs',
-    submenu: [
-      { label: 'My Designs', href: '/app/designs', description: 'Design gallery & templates', permission: 'designs.view' },
-      { label: 'New Design', href: '/app/designs/editor/new', description: 'Open blank canvas editor', permission: 'designs.create' },
-    ],
-  },
-
-  // ─────────────────────── INSIGHTS ───────────────────────
-  { kind: 'header', label: 'Insights' },
-  {
-    label: 'Reports',
-    href: '/app/reports',
-    icon: BarChart3,
-    category: 'sections',
-    module: 'reports',
-    permission: 'reports.view',
-  },
-  {
-    label: 'Intelligence',
-    icon: Brain,
-    category: 'sections',
-    module: 'intelligence',
-    featureFlag: 'module.intelligence',
-    submenu: [
-      { label: 'Dashboard', href: '/app/intelligence', description: 'Role-based intelligence overview', permission: 'intelligence.view' },
-      { label: 'Tech Stacks', href: '/app/tech-intelligence', description: 'Reusable technology stacks', permission: 'systems.view' },
-      { label: 'Engineering', href: '/app/engineering', description: 'Bugs, features & tech tracking', permission: 'bug_tracking.view' },
-      { label: 'Issue Intelligence', href: '/app/issue-intelligence', description: 'Root causes & resolutions', permission: 'issue_intelligence.view' },
-      { label: 'Financial', href: '/app/financial-intelligence', description: 'Capital allocation & revenue', permission: 'finance.view' },
-      { label: 'HRM', href: '/app/hrm', description: 'Employees & departments', permission: 'hrm.view' },
-      { label: 'Documents', href: '/app/documents', description: 'Document center', permission: 'documents.view' },
-      { label: 'Decision Log', href: '/app/decision-log', description: 'Key decisions & rationale', permission: 'decision_logs.view' },
-    ],
-  },
-  {
-    label: 'Pricing',
-    icon: Tag,
-    category: 'sections',
-    module: 'pricing',
-    featureFlag: 'module.pricing',
-    submenu: [
-      { label: 'Pricing Plans', href: '/app/pricing', description: 'Centralized pricing for all systems', permission: 'pricing.view' },
-      { label: 'Subscriptions', href: '/app/subscriptions', description: 'Client subscription management', permission: 'subscriptions.view' },
-    ],
-  },
+  { label: 'Clients', href: '/app/clients', icon: Building2, category: 'sections', module: 'clients', permission: 'clients.view' },
 
   // ──────────────────────── GOVERN ────────────────────────
   { kind: 'header', label: 'Govern' },
-  {
-    label: 'DRAIS Control',
-    icon: Workflow,
-    category: 'sections',
-    module: 'drais',
-    featureFlag: 'module.drais',
-    submenu: [
-      { label: 'Schools', href: '/app/dashboard/drais/schools', description: 'School management & control', permission: 'drais.view' },
-      { label: 'Pricing', href: '/app/dashboard/drais/pricing', description: 'Global pricing control', permission: 'drais.view' },
-      { label: 'Activity', href: '/app/dashboard/drais/activity', description: 'Real-time activity monitoring', permission: 'drais.view' },
-      { label: 'Integrations', href: '/app/dashboard/integrations', description: 'External system connections', permission: 'integrations.view' },
-    ],
-  },
   {
     label: 'Admin',
     icon: Shield,
@@ -292,26 +149,85 @@ export const menuItems = [
       { label: 'Access Simulator', href: '/app/admin/access-simulator', description: 'Preview what a role can access', permission: 'roles.manage' },
       { label: 'Authority Inspector', href: '/app/admin/authority-inspector', description: 'Verify authority levels and hierarchy enforcement', permission: 'roles.manage' },
       { label: 'Departments', href: '/app/admin/departments', description: 'Department management', permission: 'departments.view' },
-      { label: 'Approvals', href: '/app/admin/approvals', description: 'Pending approval requests', permission: 'approvals.manage' },
-      { label: 'Approval Pipeline', href: '/app/approval-pipeline', description: 'Visual approval workflow', permission: 'approvals.manage' },
       { label: 'Backups', href: '/app/admin/backups', description: 'System backups & restore', permission: 'backups.view' },
       { label: 'Audit Logs', href: '/app/admin/audit-logs', description: 'System audit trail', permission: 'audit.view' },
       { label: 'Identity Debug', href: '/app/admin/debug', description: 'User–Staff–Role integrity checker', permission: 'users.view', minHierarchy: 1 },
-      { label: 'DRAIS Health',    href: '/app/admin/drais/health', description: 'DRAIS Platform v1 shadow-consumer observability', permission: 'audit.view' },
     ],
   },
-
-  // === SETTINGS ===
   {
     label: 'Settings',
     icon: Settings,
     category: 'sections',
-    // Settings visible to all authenticated users
     submenu: [
       { label: 'General', href: '/app/settings', description: 'Account & preferences' },
       { label: 'Appearance', href: '/app/settings/appearance', icon: Palette, description: 'Colors, gradients, glass' },
       { label: 'Typography', href: '/app/settings/typography', icon: Type, description: 'Font family, size & weight' },
       { label: 'Active Sessions', href: '/app/settings/sessions', icon: Shield, description: 'Manage logged-in devices' },
+    ],
+  },
+
+  // ───────── MORE (inherited — hidden behind feature flags) ─────────
+  { kind: 'header', label: 'More' },
+  {
+    label: 'Business Development',
+    icon: Target,
+    category: 'sections',
+    featureFlag: 'module.business_dev',
+    submenu: [
+      { label: 'Bid Pipeline', href: '/app/pipeline', description: 'Incoming opportunities and bids', permission: 'pipeline.view' },
+      { label: 'Leads', href: '/app/prospects', description: 'Track and qualify new opportunities', permission: 'prospects.view' },
+      { label: 'Bids & Proposals', href: '/app/proposals', description: 'Client proposals, bids, and submissions', permission: 'prospects.view' },
+      { label: 'Follow-ups', href: '/app/followups', description: 'Scheduled commercial touchpoints', permission: 'prospects.view' },
+      { label: 'Payments', href: '/app/payments', description: 'Client payment tracking', permission: 'payments.view' },
+      { label: 'Invoices', href: '/app/invoices', description: 'Invoices, certificates, and billing PDFs', permission: 'invoices.view' },
+    ],
+  },
+  {
+    label: 'Company OS (legacy)',
+    icon: Building2,
+    category: 'sections',
+    featureFlag: 'module.legacy',
+    submenu: [
+      { label: 'Sites & Systems', href: '/app/systems', description: 'Inherited systems registry', permission: 'systems.view' },
+      { label: 'Operations Log', href: '/app/operations', description: 'Daily operations log', permission: 'operations.view' },
+      { label: 'Items', href: '/app/items', description: 'Asset register (→ Resource Catalog)', permission: 'assets.view' },
+      { label: 'Materials', href: '/app/products', description: 'Legacy catalog (→ Resource Catalog)', permission: 'products.view' },
+      { label: 'Media', href: '/app/media', description: 'Media files (→ Documents)', permission: 'media.view' },
+      { label: 'Offerings', href: '/app/offerings', description: 'Service & package catalog', permission: 'offerings.view' },
+      { label: 'Services', href: '/app/services', description: 'Service catalog', permission: 'services.view' },
+      { label: 'Liabilities', href: '/app/liabilities', description: 'Commitments, retention, and debts', permission: 'finance.view' },
+      { label: 'Control Tower', href: '/app/control-tower', description: 'Cross-project visibility', permission: 'staff.view' },
+      { label: 'Decision Log', href: '/app/decision-log', description: 'Key decisions & rationale', permission: 'decision_logs.view' },
+      { label: 'HRM', href: '/app/hrm', description: 'Employees & departments', permission: 'hrm.view' },
+    ],
+  },
+  {
+    label: 'Designs', icon: Palette, category: 'sections', module: 'designs', featureFlag: 'module.designs',
+    submenu: [
+      { label: 'My Designs', href: '/app/designs', description: 'Design gallery & templates', permission: 'designs.view' },
+      { label: 'New Design', href: '/app/designs/editor/new', description: 'Open blank canvas editor', permission: 'designs.create' },
+    ],
+  },
+  {
+    label: 'Intelligence', icon: Brain, category: 'sections', module: 'intelligence', featureFlag: 'module.intelligence',
+    submenu: [
+      { label: 'Dashboard', href: '/app/intelligence', description: 'Role-based intelligence overview', permission: 'intelligence.view' },
+      { label: 'Financial', href: '/app/financial-intelligence', description: 'Capital allocation & revenue', permission: 'finance.view' },
+      { label: 'Issue Intelligence', href: '/app/issue-intelligence', description: 'Root causes & resolutions', permission: 'issue_intelligence.view' },
+    ],
+  },
+  {
+    label: 'Pricing', icon: Tag, category: 'sections', module: 'pricing', featureFlag: 'module.pricing',
+    submenu: [
+      { label: 'Pricing Plans', href: '/app/pricing', description: 'Centralized pricing', permission: 'pricing.view' },
+      { label: 'Subscriptions', href: '/app/subscriptions', description: 'Client subscription management', permission: 'subscriptions.view' },
+    ],
+  },
+  {
+    label: 'DRAIS Control', icon: Workflow, category: 'sections', module: 'drais', featureFlag: 'module.drais',
+    submenu: [
+      { label: 'Schools', href: '/app/dashboard/drais/schools', description: 'School management & control', permission: 'drais.view' },
+      { label: 'Integrations', href: '/app/dashboard/integrations', description: 'External system connections', permission: 'integrations.view' },
     ],
   },
 ];
@@ -322,7 +238,7 @@ export const menuItems = [
 export const quickAccessLinks = [
   { id: 'dashboard', label: 'Dashboard', icon: Home, href: '/app/dashboard', permission: 'dashboard.view' },
   { id: 'projects', label: 'Projects', icon: Briefcase, href: '/app/projects', permission: 'projects.view' },
-  { id: 'tasks', label: 'Site Tasks', icon: ClipboardCheck, href: '/app/obligations', permission: 'obligations.view' },
+  { id: 'reports', label: 'Reports', icon: BarChart3, href: '/app/reports', permission: 'reports.view' },
   { id: 'finance', label: 'Finance', icon: DollarSign, href: '/app/finance', permission: 'finance.view' },
 ];
 

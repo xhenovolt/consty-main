@@ -49,6 +49,7 @@ yarn-error.log*
 /*.md
 !/README.md
 !/CONSTY_DOMAIN_ARCHITECTURE.md
+!/CONSTY_PRODUCT_AUDIT.md
 
 # database dumps and backups
 Backup/
