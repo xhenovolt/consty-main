@@ -82,14 +82,8 @@ export async function PATCH(request, { params }) {
       } else if (b.status === 'rejected') {
         await query(`UPDATE commitments SET status='cancelled', updated_at=now() WHERE procurement_request_id=$1 AND status='open'`, [prid]);
       }
-      // Keep the project budget's committed total in sync (forecast/status are
-      // fully reconciled when the Budget tab recomputes on load).
-      await query(
-        `UPDATE project_budgets SET
-           committed_amount = (SELECT COALESCE(SUM(amount),0) FROM commitments WHERE project_id=$1 AND status='open'),
-           updated_at = now()
-         WHERE project_id = $1`, [id]).catch(() => {});
-      await query(`SELECT fn_budget_status($1)`, [id]).catch(() => {});
+      // Recompute the whole budget so per-category committed/forecast update.
+      await query(`SELECT fn_recompute_budget($1)`, [id]).catch(() => {});
     }
     return NextResponse.json({ success: true, data: pr });
   } catch (error) {

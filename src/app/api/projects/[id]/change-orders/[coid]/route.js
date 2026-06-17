@@ -41,10 +41,13 @@ export async function PATCH(request, { params }) {
       const cost = Number(co.cost_impact) || 0;
       const days = Number(co.time_impact_days) || 0;
       if (cost !== 0) {
+        // Apply the cost change to the contingency budget line, then recompute.
+        await query(`INSERT INTO project_budgets (project_id) VALUES ($1) ON CONFLICT (project_id) DO NOTHING`, [id]);
         await query(
-          `UPDATE project_budgets SET allocated_amount = GREATEST(0, allocated_amount + $2), updated_at = now()
-            WHERE project_id = $1`, [id, cost]).catch(() => {});
-        await query(`SELECT fn_budget_status($1)`, [id]).catch(() => {});
+          `INSERT INTO budget_lines (project_id, category, allocated) VALUES ($1::uuid,'contingency',GREATEST($2,0))
+           ON CONFLICT (project_id, category) DO UPDATE SET allocated = GREATEST(budget_lines.allocated + $2, 0), updated_at=now()`,
+          [id, cost]).catch(() => {});
+        await query(`SELECT fn_recompute_budget($1)`, [id]).catch(() => {});
       }
       if (days !== 0) {
         await query(

@@ -3,15 +3,7 @@ import { query } from '@/lib/db.js';
 import { requirePermission } from '@/lib/permissions.js';
 import { assertProjectAccess } from '@/lib/project-access.js';
 
-// Refresh the project budget's actual spend (sum of project expenses) and status.
-async function refreshActual(projectId) {
-  await query(
-    `UPDATE project_budgets SET
-       actual_amount = (SELECT COALESCE(SUM(amount),0) FROM expenses WHERE project_id=$1),
-       updated_at = now()
-     WHERE project_id = $1`, [projectId]).catch(() => {});
-  await query(`SELECT fn_budget_status($1)`, [projectId]).catch(() => {});
-}
+const BUDGET_CATEGORIES = ['materials', 'labour', 'transport', 'equipment', 'permits', 'subcontractors', 'contingency', 'other'];
 
 // GET /api/projects/[id]/expenses
 export async function GET(request, { params }) {
@@ -53,16 +45,18 @@ export async function POST(request, { params }) {
     }
     if (!accountId) return NextResponse.json({ success: false, error: 'No finance account exists to record this expense. Create one in Finance → Accounts first.' }, { status: 400 });
 
+    // Category must be a budget category so it rolls into the right budget line.
+    const category = BUDGET_CATEGORIES.includes(b.category) ? b.category : 'other';
     const { rows } = await query(
       `INSERT INTO expenses
          (project_id, work_item_id, budget_id, account_id, amount, currency, category, vendor, description, expense_date, status, created_by)
        VALUES ($1::uuid,$2::uuid,$3::uuid,$4::uuid,$5,COALESCE($6,'UGX'),$7,$8,$9,COALESCE($10::date,CURRENT_DATE),COALESCE($11,'paid'),$12::uuid)
        RETURNING *`,
       [id, b.work_item_id || null, b.budget_line_id || null, accountId, amount, b.currency || null,
-       b.category || 'general', b.vendor || null, b.description || b.category || 'Project expense',
+       category, b.vendor || null, b.description || `${category} expense`,
        b.expense_date || null, b.status || null, auth.userId]
     );
-    await refreshActual(id);
+    await query(`SELECT fn_recompute_budget($1)`, [id]).catch(() => {});
     return NextResponse.json({ success: true, data: rows[0] }, { status: 201 });
   } catch (error) {
     console.error('[ProjectExpenses] POST error:', error);

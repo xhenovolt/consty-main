@@ -346,11 +346,10 @@ function BudgetTab({ projectId, canEdit, currency, items, toast, onChanged }) {
   const [data, setData] = useState(null);
   const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [alloc, setAlloc] = useState('');
-  const [forecast, setForecast] = useState('');
   const [frozen, setFrozen] = useState(false);
   const [fund, setFund] = useState({ source_type: 'company_wallet', name: '', amount: '', status: 'pledged' });
   const [showExp, setShowExp] = useState(false);
+  const [newCat, setNewCat] = useState({ category: 'materials', allocated: '' });
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -361,8 +360,6 @@ function BudgetTab({ projectId, canEdit, currency, items, toast, onChanged }) {
       ]);
       if (bRes.success) {
         setData(bRes.data);
-        setAlloc(bRes.data.budget?.allocated_amount ?? '');
-        setForecast(bRes.data.budget?.forecast_amount ?? '');
         setFrozen(!!bRes.data.budget?.is_frozen);
       }
       if (eRes.success) setExpenses(eRes.data);
@@ -372,13 +369,34 @@ function BudgetTab({ projectId, canEdit, currency, items, toast, onChanged }) {
 
   const money = (v) => `${currency} ${Number(v || 0).toLocaleString()}`;
 
-  const saveBudget = async () => {
+  const saveFreeze = async (val) => {
+    setFrozen(val);
     const res = await fetchWithAuth(`/api/projects/${projectId}/budget`, {
-      method: 'PUT', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ allocated_amount: Number(alloc) || 0, forecast_amount: forecast === '' ? null : Number(forecast), is_frozen: frozen, currency }),
+      method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ is_frozen: val, currency }),
     });
     const json = await res.json();
-    if (json.success) { toast.success?.('Budget saved'); load(); onChanged?.(); } else toast.error?.(json.error || 'Failed');
+    if (json.success) { load(); onChanged?.(); } else toast.error?.(json.error || 'Failed');
+  };
+  const addCategory = async () => {
+    if (!(Number(newCat.allocated) >= 0)) { toast.error?.('Enter an allocation'); return; }
+    const res = await fetchWithAuth(`/api/projects/${projectId}/budget/lines`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ category: newCat.category, allocated: Number(newCat.allocated) || 0, currency }),
+    });
+    const json = await res.json();
+    if (json.success) { toast.success?.('Category saved'); setNewCat({ category: 'materials', allocated: '' }); load(); onChanged?.(); } else toast.error?.(json.error || 'Failed');
+  };
+  const patchLine = async (lineId, allocated) => {
+    const res = await fetchWithAuth(`/api/projects/${projectId}/budget/lines/${lineId}`, {
+      method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ allocated: Number(allocated) || 0 }),
+    });
+    const json = await res.json();
+    if (json.success) { load(); onChanged?.(); } else toast.error?.(json.error || 'Failed');
+  };
+  const delLine = async (lineId) => {
+    const res = await fetchWithAuth(`/api/projects/${projectId}/budget/lines/${lineId}`, { method: 'DELETE' });
+    const json = await res.json();
+    if (json.success) { load(); onChanged?.(); } else toast.error?.(json.error || 'Failed');
   };
   const addFunding = async () => {
     const res = await fetchWithAuth(`/api/projects/${projectId}/funding`, {
@@ -401,14 +419,14 @@ function BudgetTab({ projectId, canEdit, currency, items, toast, onChanged }) {
 
   return (
     <div className="space-y-5">
-      {/* Computed cards */}
+      {/* Computed cards — all derived from category lines */}
       <div className="grid gap-3 grid-cols-2 lg:grid-cols-4">
         <Stat icon={Wallet} label="Allocated" value={money(c.allocated)} />
+        <Stat icon={Wallet} label="Available (alloc − committed)" value={money(c.available)} />
         <Stat icon={Wallet} label="Committed" value={money(c.committed)} />
         <Stat icon={Wallet} label="Actual spent" value={money(c.actual)} />
         <Stat icon={Wallet} label="Forecast" value={money(c.forecast)} />
         <Stat icon={Wallet} label="Remaining" value={money(c.remaining)} />
-        <Stat icon={Wallet} label="Variance" value={money(c.variance)} />
         <Stat icon={Wallet} label="Funding pledged" value={money(c.funding_total)} />
         <div className="bg-card border border-border rounded-xl p-4">
           <div className="text-xs text-muted-foreground mb-1">Status</div>
@@ -424,22 +442,73 @@ function BudgetTab({ projectId, canEdit, currency, items, toast, onChanged }) {
         </div>
       )}
 
-      {/* Set budget */}
-      {canEdit && (
-        <div className="bg-card border border-border rounded-xl p-4">
-          <h3 className="text-sm font-semibold text-foreground mb-3">Set budget</h3>
-          <div className="flex flex-wrap items-end gap-3">
-            <div><label className="block text-xs text-muted-foreground mb-1">Allocated ({currency})</label>
-              <input type="number" className={`${field} w-40`} value={alloc} onChange={(e) => setAlloc(e.target.value)} /></div>
-            <div><label className="block text-xs text-muted-foreground mb-1">Forecast (optional)</label>
-              <input type="number" className={`${field} w-40`} value={forecast} onChange={(e) => setForecast(e.target.value)} placeholder="auto" /></div>
-            <label className="inline-flex items-center gap-2 text-sm pb-2">
-              <input type="checkbox" checked={frozen} onChange={(e) => setFrozen(e.target.checked)} /> Freeze spending
+      {/* Budget by category — allocate per category; committed/actual/forecast derived */}
+      <div className="bg-card border border-border rounded-xl overflow-x-auto">
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-foreground">Budget by category</h3>
+          {canEdit && (
+            <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+              <input type="checkbox" checked={frozen} onChange={(e) => saveFreeze(e.target.checked)} /> Freeze spending
             </label>
-            <button onClick={saveBudget} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium">Save</button>
-          </div>
+          )}
         </div>
-      )}
+        <table className="w-full text-sm">
+          <thead>
+            <tr className="text-left text-xs text-muted-foreground border-b border-border">
+              <th className="py-2 px-3 font-medium">Category</th>
+              <th className="py-2 px-3 font-medium text-right">Allocated</th>
+              <th className="py-2 px-3 font-medium text-right">Committed</th>
+              <th className="py-2 px-3 font-medium text-right">Actual</th>
+              <th className="py-2 px-3 font-medium text-right">Forecast</th>
+              <th className="py-2 px-3 font-medium text-right">Variance</th>
+              <th className="py-2 px-3"></th>
+            </tr>
+          </thead>
+          <tbody>
+            {(data?.categories || []).length === 0 ? (
+              <tr><td colSpan={7} className="p-4 text-sm text-muted-foreground text-center">No categories yet. Add one below to allocate budget.</td></tr>
+            ) : data.categories.map((l) => (
+              <tr key={l.id} className="border-b border-border/60 last:border-0">
+                <td className="py-2 px-3 capitalize text-foreground">{l.category}</td>
+                <td className="py-2 px-3 text-right">
+                  {canEdit ? (
+                    <input type="number" defaultValue={Number(l.allocated)} onBlur={(e) => Number(e.target.value) !== Number(l.allocated) && patchLine(l.id, e.target.value)}
+                      className="w-28 text-right bg-background border border-border rounded px-2 py-1 tabular-nums" />
+                  ) : <span className="tabular-nums">{money(l.allocated)}</span>}
+                </td>
+                <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{money(l.committed)}</td>
+                <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{money(l.actual)}</td>
+                <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{money(l.forecast)}</td>
+                <td className={`py-2 px-3 text-right tabular-nums ${Number(l.variance) < 0 ? 'text-red-600' : 'text-foreground'}`}>{money(l.variance)}</td>
+                <td className="py-2 px-3 text-right">{canEdit && <button onClick={() => delLine(l.id)} className="p-1.5 rounded hover:bg-red-100 text-muted-foreground hover:text-red-600"><Trash2 size={14} /></button>}</td>
+              </tr>
+            ))}
+          </tbody>
+          {(data?.categories || []).length > 0 && (
+            <tfoot>
+              <tr className="border-t border-border font-medium">
+                <td className="py-2 px-3 text-foreground">Total</td>
+                <td className="py-2 px-3 text-right tabular-nums">{money(c.allocated)}</td>
+                <td className="py-2 px-3 text-right tabular-nums">{money(c.committed)}</td>
+                <td className="py-2 px-3 text-right tabular-nums">{money(c.actual)}</td>
+                <td className="py-2 px-3 text-right tabular-nums">{money(c.forecast)}</td>
+                <td className="py-2 px-3 text-right tabular-nums">{money(c.variance)}</td>
+                <td></td>
+              </tr>
+            </tfoot>
+          )}
+        </table>
+        {canEdit && (
+          <div className="p-3 flex flex-wrap items-end gap-2 border-t border-border">
+            <select className={`${field} w-44`} value={newCat.category} onChange={(e) => setNewCat(s => ({ ...s, category: e.target.value }))}>
+              {BUDGET_CATEGORIES.map(cat => <option key={cat} value={cat}>{cat}</option>)}
+            </select>
+            <input type="number" className={`${field} w-40`} placeholder={`Allocated (${currency})`} value={newCat.allocated} onChange={(e) => setNewCat(s => ({ ...s, allocated: e.target.value }))} />
+            <button onClick={addCategory} className="inline-flex items-center gap-1 px-3 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium"><Plus size={15} /> Allocate</button>
+            <span className="text-xs text-muted-foreground">Forecast is derived (actual + committed + estimate-to-complete).</span>
+          </div>
+        )}
+      </div>
 
       {/* Funding sources */}
       <div className="bg-card border border-border rounded-xl">
@@ -507,7 +576,7 @@ function BudgetTab({ projectId, canEdit, currency, items, toast, onChanged }) {
 }
 
 function AddExpenseModal({ projectId, currency, items, onClose, onDone, toast }) {
-  const [f, setF] = useState({ amount: '', category: '', vendor: '', description: '', expense_date: '', work_item_id: '' });
+  const [f, setF] = useState({ amount: '', category: 'materials', vendor: '', description: '', expense_date: '', work_item_id: '' });
   const [saving, setSaving] = useState(false);
   const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }));
   const submit = async () => {
@@ -531,7 +600,8 @@ function AddExpenseModal({ projectId, currency, items, onClose, onDone, toast })
           <div><label className="block text-sm font-medium mb-1">Date</label><input type="date" className={field} value={f.expense_date} onChange={set('expense_date')} /></div>
         </div>
         <div className="grid grid-cols-2 gap-3">
-          <div><label className="block text-sm font-medium mb-1">Category</label><input className={field} value={f.category} onChange={set('category')} placeholder="materials, labour, fuel…" /></div>
+          <div><label className="block text-sm font-medium mb-1">Budget category</label>
+            <select className={field} value={f.category} onChange={set('category')}>{BUDGET_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
           <div><label className="block text-sm font-medium mb-1">Vendor</label><input className={field} value={f.vendor} onChange={set('vendor')} /></div>
         </div>
         <div><label className="block text-sm font-medium mb-1">Description</label><input className={field} value={f.description} onChange={set('description')} /></div>

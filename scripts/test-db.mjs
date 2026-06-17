@@ -199,12 +199,17 @@ async function main() {
       `INSERT INTO defects (project_id, description, severity, rework_required) VALUES ($1,'Honeycomb in slab','high',true) RETURNING status, rework_required`, [pid]);
     assert(def.status === 'open' && def.rework_required === true, 'defect logged (open, rework_required)');
 
-    // ── Change order budget effect (mirrors approve side-effect) ──────
-    await client.query(`INSERT INTO change_orders (project_id, title, cost_impact, time_impact_days, status) VALUES ($1,'Extra rebar',200,7,'submitted')`, [pid]);
+    // ── Change order budget effect (mirrors approve → contingency line) ─
+    await client.query(`INSERT INTO budget_lines (project_id, category, allocated) VALUES ($1,'materials',1000)
+                        ON CONFLICT (project_id,category) DO UPDATE SET allocated=1000`, [pid]);
+    await client.query(`SELECT fn_recompute_budget($1)`, [pid]);
     const allocBefore = Number((await client.query(`SELECT allocated_amount FROM project_budgets WHERE project_id=$1`, [pid])).rows[0].allocated_amount);
-    await client.query(`UPDATE project_budgets SET allocated_amount = allocated_amount + 200 WHERE project_id=$1`, [pid]); // approve → +cost
+    await client.query(`INSERT INTO change_orders (project_id, title, cost_impact, status) VALUES ($1,'Extra rebar',200,'submitted')`, [pid]);
+    await client.query(`INSERT INTO budget_lines (project_id, category, allocated) VALUES ($1,'contingency',200)
+                        ON CONFLICT (project_id,category) DO UPDATE SET allocated=budget_lines.allocated+200`, [pid]);
+    await client.query(`SELECT fn_recompute_budget($1)`, [pid]);
     const allocAfter = Number((await client.query(`SELECT allocated_amount FROM project_budgets WHERE project_id=$1`, [pid])).rows[0].allocated_amount);
-    assert(allocAfter === allocBefore + 200, `approving change order raises allocated by cost_impact (${allocBefore}→${allocAfter})`);
+    assert(allocAfter === allocBefore + 200, `approving change order raises allocated by cost_impact via lines (${allocBefore}→${allocAfter})`);
     await expectError(
       () => client.query(`INSERT INTO change_orders (project_id, title, status) VALUES ($1,'x','not_a_status')`, [pid]),
       'invalid change_order status rejected by CHECK');
@@ -235,14 +240,17 @@ async function main() {
       `SELECT count(*)::int n FROM resources WHERE project_id=ANY($1::uuid[]) AND quantity_available < quantity_required`, [[dp.id]])).rows[0].n);
     assert(shortages === 1, `dashboard: resource-shortage aggregate counts 1 (got ${shortages})`);
 
-    // ── Project expense → actual spend bridge (mirrors expenses route) ─
-    await client.query(`INSERT INTO project_budgets (project_id, allocated_amount) VALUES ($1, 5000)`, [dp.id]);
+    // ── Category budget model: allocate, expense → actual, forecast derived ─
+    await client.query(`INSERT INTO budget_lines (project_id, category, allocated) VALUES ($1,'materials',5000)
+                        ON CONFLICT (project_id,category) DO UPDATE SET allocated=5000`, [dp.id]);
     const { rows: [acct] } = await client.query(`INSERT INTO accounts (name, type) VALUES ('Test Cash','cash') RETURNING id`);
     await client.query(`INSERT INTO expenses (project_id, account_id, amount, currency, category, description, created_by) VALUES ($1, $2, 1500, 'UGX', 'materials', 'Cement purchase', $3)`, [dp.id, acct.id, uid]);
-    await client.query(`UPDATE project_budgets SET actual_amount = (SELECT COALESCE(SUM(amount),0) FROM expenses WHERE project_id=$1) WHERE project_id=$1`, [dp.id]);
+    await client.query(`SELECT fn_recompute_budget($1)`, [dp.id]);
     const actual = Number((await client.query(`SELECT actual_amount FROM project_budgets WHERE project_id=$1`, [dp.id])).rows[0].actual_amount);
-    assert(actual === 1500, `project expense rolls into budget actual (got ${actual})`);
-    // and it surfaces in the finance rollup query
+    assert(actual === 1500, `expense rolls into derived budget actual (got ${actual})`);
+    // forecast is DERIVED: actual(1500) + committed(0) + ETC(3500) = 5000
+    const matLine = (await client.query(`SELECT actual, forecast FROM budget_lines WHERE project_id=$1 AND category='materials'`, [dp.id])).rows[0];
+    assert(Number(matLine.actual) === 1500 && Number(matLine.forecast) === 5000, `materials line: actual=1500, derived forecast=5000 (got a=${matLine.actual} f=${matLine.forecast})`);
     const rollup = (await client.query(
       `SELECT pb.actual_amount FROM projects p JOIN project_budgets pb ON pb.project_id=p.id WHERE p.id=ANY($1::uuid[])`, [[dp.id]])).rows;
     assert(rollup.length === 1 && Number(rollup[0].actual_amount) === 1500, 'project budget appears in finance rollup with actual=1500');
