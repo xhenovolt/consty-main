@@ -18,8 +18,10 @@ export async function GET(request, { params }) {
            LEFT JOIN suppliers s ON s.id = pr.supplier_id WHERE pr.id = $1 AND pr.project_id = $2`, [prid, id]),
     query(`SELECT l.*, r.name AS resource_name FROM procurement_request_lines l
            LEFT JOIN resources r ON r.id = l.resource_id WHERE l.request_id = $1 ORDER BY l.created_at`, [prid]),
-    query(`SELECT g.*, u.name AS inspected_by_name FROM goods_receipts g
-           LEFT JOIN users u ON u.id = g.inspected_by WHERE g.procurement_request_id = $1 ORDER BY g.received_at DESC`, [prid]),
+    query(`SELECT g.*, COALESCE(rb.name, ib.name) AS received_by_name FROM goods_receipts g
+           LEFT JOIN users rb ON rb.id = g.received_by
+           LEFT JOIN users ib ON ib.id = g.inspected_by
+           WHERE g.procurement_request_id = $1 ORDER BY g.received_at DESC`, [prid]),
   ]);
   if (!pr.rows[0]) return NextResponse.json({ success: false, error: 'Request not found' }, { status: 404 });
   return NextResponse.json({ success: true, data: { ...pr.rows[0], lines: lines.rows, receipts: receipts.rows } });

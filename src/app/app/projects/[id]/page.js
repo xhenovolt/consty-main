@@ -624,6 +624,7 @@ function ResourcesTab({ projectId, canEdit, currency, toast }) {
   const [loading, setLoading] = useState(true);
   const [showAdd, setShowAdd] = useState(false);
   const [moveFor, setMoveFor] = useState(null);
+  const [filter, setFilter] = useState('all');
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -635,6 +636,16 @@ function ResourcesTab({ projectId, canEdit, currency, toast }) {
   }, [projectId]);
   useEffect(() => { load(); }, [load]);
 
+  const FILTERS = ['all', 'expected', 'incoming', 'partially_available', 'available', 'consumed'];
+  const RES_STATUS_STYLE = {
+    expected: 'bg-muted text-muted-foreground', incoming: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+    partially_available: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+    available: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+    consumed: 'bg-purple-100 text-purple-700 dark:bg-purple-900/30 dark:text-purple-300',
+    returned: 'bg-cyan-100 text-cyan-700', wasted: 'bg-red-100 text-red-700', cancelled: 'bg-muted text-muted-foreground',
+  };
+  const filtered = filter === 'all' ? rows : rows.filter(r => (r.status || 'available') === filter);
+
   const del = async (rid) => {
     if (!confirm('Delete this resource?')) return;
     const res = await fetchWithAuth(`/api/projects/${projectId}/resources/${rid}`, { method: 'DELETE' });
@@ -645,16 +656,26 @@ function ResourcesTab({ projectId, canEdit, currency, toast }) {
   if (loading) return <div className="text-sm text-muted-foreground py-8">Loading resources…</div>;
   return (
     <div className="space-y-4">
-      {canEdit && (
-        <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-2 px-3 py-1.5 border border-border rounded-lg text-sm hover:bg-muted/50">
-          <Plus size={15} /> Add Resource
-        </button>
-      )}
+      <div className="flex flex-wrap items-center gap-2">
+        {canEdit && (
+          <button onClick={() => setShowAdd(true)} className="inline-flex items-center gap-2 px-3 py-1.5 border border-border rounded-lg text-sm hover:bg-muted/50">
+            <Plus size={15} /> Add Resource
+          </button>
+        )}
+        <div className="flex flex-wrap gap-1 ml-auto">
+          {FILTERS.map(s => (
+            <button key={s} onClick={() => setFilter(s)}
+              className={`px-2.5 py-1 rounded-full text-xs ${filter === s ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground'}`}>
+              {s === 'all' ? 'All' : s.replace(/_/g, ' ')}
+            </button>
+          ))}
+        </div>
+      </div>
       {rows.length === 0 ? (
         <div className="border border-dashed border-border rounded-xl py-12 text-center">
           <Package className="w-9 h-9 mx-auto text-muted-foreground/50 mb-2" />
           <p className="text-foreground font-medium">No resources yet</p>
-          <p className="text-sm text-muted-foreground mt-1">Add materials, equipment, labour, fuel and more.</p>
+          <p className="text-sm text-muted-foreground mt-1">Add resources, or approve a procurement request to see incoming items.</p>
         </div>
       ) : (
         <div className="bg-card border border-border rounded-xl overflow-x-auto">
@@ -662,30 +683,28 @@ function ResourcesTab({ projectId, canEdit, currency, toast }) {
             <thead>
               <tr className="text-left text-xs text-muted-foreground border-b border-border">
                 <th className="py-2 px-3 font-medium">Resource</th>
-                <th className="py-2 px-3 font-medium">Category</th>
-                <th className="py-2 px-3 font-medium text-right">Available</th>
+                <th className="py-2 px-3 font-medium">Status</th>
                 <th className="py-2 px-3 font-medium text-right">Required</th>
-                <th className="py-2 px-3 font-medium text-right">Used / Wasted</th>
-                <th className="py-2 px-3 font-medium text-right">Unit cost</th>
-                <th className="py-2 px-3 font-medium">Condition</th>
+                <th className="py-2 px-3 font-medium text-right">Incoming</th>
+                <th className="py-2 px-3 font-medium text-right">Available</th>
+                <th className="py-2 px-3 font-medium text-right">Used/Waste/Rej</th>
                 <th className="py-2 px-3"></th>
               </tr>
             </thead>
             <tbody>
-              {rows.map((r) => {
+              {filtered.map((r) => {
                 const short = Number(r.quantity_available) < Number(r.quantity_required);
                 return (
                   <tr key={r.id} className="border-b border-border/60 last:border-0">
                     <td className="py-2 px-3">
-                      <div className="font-medium text-foreground">{r.name}</div>
-                      {(r.manufacturer || r.supplier_name) && <div className="text-xs text-muted-foreground">{[r.manufacturer, r.supplier_name].filter(Boolean).join(' · ')}</div>}
+                      <div className="font-medium text-foreground">{r.name} <span className="text-xs text-muted-foreground">· {r.category.replace(/_/g, ' ')}</span></div>
+                      <div className="text-xs text-muted-foreground">{[r.manufacturer, r.supplier_name, r.source_type === 'procurement' ? 'from procurement' : null].filter(Boolean).join(' · ')}</div>
                     </td>
-                    <td className="py-2 px-3"><span className="px-2 py-0.5 rounded-full text-xs bg-muted text-muted-foreground">{r.category.replace(/_/g, ' ')}</span></td>
-                    <td className={`py-2 px-3 text-right tabular-nums ${short ? 'text-amber-600 font-medium' : 'text-foreground'}`}>{Number(r.quantity_available)} {r.unit_of_measure || ''}</td>
-                    <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{Number(r.quantity_required)}</td>
-                    <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{Number(r.quantity_consumed)} / {Number(r.quantity_wasted)}</td>
-                    <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{currency} {Number(r.unit_cost).toLocaleString()}</td>
-                    <td className="py-2 px-3">{r.condition ? <span className="text-xs text-muted-foreground">{r.condition}</span> : '—'}</td>
+                    <td className="py-2 px-3"><span className={`px-2 py-0.5 rounded-full text-xs ${RES_STATUS_STYLE[r.status] || 'bg-muted text-muted-foreground'}`}>{(r.status || 'available').replace(/_/g, ' ')}</span></td>
+                    <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{Number(r.quantity_required)} {r.unit_of_measure || ''}</td>
+                    <td className="py-2 px-3 text-right tabular-nums text-blue-600">{Number(r.incoming_quantity || 0)}</td>
+                    <td className={`py-2 px-3 text-right tabular-nums ${short ? 'text-amber-600 font-medium' : 'text-foreground'}`}>{Number(r.quantity_available)}</td>
+                    <td className="py-2 px-3 text-right tabular-nums text-muted-foreground">{Number(r.quantity_consumed)} / {Number(r.quantity_wasted)} / {Number(r.rejected_quantity || 0)}</td>
                     <td className="py-2 px-3">
                       {canEdit && (
                         <div className="flex items-center gap-1 justify-end">
@@ -1049,10 +1068,18 @@ function NewRequestModal({ projectId, currency, onClose, onDone, toast }) {
   );
 }
 
+const LINE_STATUS_STYLE = {
+  requested: 'bg-muted text-muted-foreground', ordered: 'bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300',
+  partially_received: 'bg-amber-100 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300',
+  fully_received: 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300',
+  rejected: 'bg-red-100 text-red-700 dark:bg-red-900/30 dark:text-red-300', cancelled: 'bg-muted text-muted-foreground',
+};
+
 function RequestDetailModal({ projectId, requestId, canEdit, currency, onClose, onChanged, toast }) {
   const [pr, setPr] = useState(null);
-  const [rcv, setRcv] = useState({ received_qty: '', rejected_qty: '', inspection_status: 'pending', stored_to_location: '' });
+  const [showReceive, setShowReceive] = useState(false);
   const money = (v) => `${currency} ${Number(v || 0).toLocaleString()}`;
+  const qty = (v) => Number(v || 0).toLocaleString();
 
   const load = useCallback(async () => {
     const res = await fetchWithAuth(`/api/projects/${projectId}/procurement/${requestId}`);
@@ -1068,46 +1095,55 @@ function RequestDetailModal({ projectId, requestId, canEdit, currency, onClose, 
     const json = await res.json();
     if (json.success) { toast.success?.(`Marked ${status}`); load(); onChanged(); } else toast.error?.(json.error || 'Failed');
   };
-  const recordReceipt = async () => {
-    const res = await fetchWithAuth(`/api/projects/${projectId}/procurement/${requestId}/receipts`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ received_qty: Number(rcv.received_qty) || 0, rejected_qty: Number(rcv.rejected_qty) || 0, inspection_status: rcv.inspection_status, stored_to_location: rcv.stored_to_location || null }),
-    });
-    const json = await res.json();
-    if (json.success) { toast.success?.('Receipt recorded'); setRcv({ received_qty: '', rejected_qty: '', inspection_status: 'pending', stored_to_location: '' }); load(); onChanged(); } else toast.error?.(json.error || 'Failed');
-  };
+
+  const receivable = (pr?.lines || []).some(l => Number(l.remaining_quantity) > 0)
+    && !['closed', 'rejected', 'cancelled'].includes(pr?.status);
 
   return (
-    <Modal isOpen onClose={onClose} title={pr?.title || 'Request'} size="lg"
-      subtitle={pr ? `${pr.status} · est. ${money(pr.total_est_cost)}` : ''}>
+    <Modal isOpen onClose={onClose} title={pr?.title || 'Request'} size="xl"
+      subtitle={pr ? `${pr.status.replace(/_/g, ' ')} · est. ${money(pr.total_est_cost)}` : ''}>
       {!pr ? <div className="text-sm text-muted-foreground py-6">Loading…</div> : (
         <div className="space-y-4">
-          {canEdit && (
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-muted-foreground">Set status:</span>
-              <select className={`${field} w-auto`} value={pr.status} onChange={(e) => setStatus(e.target.value)}>
-                {PROC_STATUSES.map(s => <option key={s} value={s}>{s}</option>)}
-              </select>
-              {pr.status === 'approved' && <span className="text-xs text-emerald-600">→ commitment created (feeds budget)</span>}
-            </div>
-          )}
+          <div className="flex flex-wrap items-center gap-2">
+            {canEdit && (
+              <>
+                <span className="text-xs text-muted-foreground">Status:</span>
+                <select className={`${field} w-auto`} value={pr.status} onChange={(e) => setStatus(e.target.value)}>
+                  {PROC_STATUSES.map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+                </select>
+                {receivable && <button onClick={() => setShowReceive(true)} className="ml-auto inline-flex items-center gap-1 px-3 py-1.5 text-sm rounded-lg bg-primary text-primary-foreground font-medium">Receive Goods</button>}
+              </>
+            )}
+          </div>
 
-          <div>
-            <div className="text-xs font-semibold text-muted-foreground uppercase mb-1">Line items</div>
-            <div className="border border-border rounded-lg divide-y divide-border">
-              {pr.lines.length === 0 ? <div className="p-3 text-sm text-muted-foreground">No lines.</div> : pr.lines.map((l) => (
-                <div key={l.id} className="flex items-start gap-2 p-2 text-sm">
-                  <div className="min-w-0 flex-1">
-                    <div className="text-foreground font-medium">{l.item_name || l.description}{l.specification ? <span className="text-muted-foreground font-normal"> · {l.specification}</span> : null}</div>
-                    <div className="text-xs text-muted-foreground">
-                      {[`${Number(l.quantity)} ${l.unit || ''}`.trim() + ` @ ${money(l.est_unit_cost)}`,
-                        l.budget_category, l.supplier_name].filter(Boolean).join(' · ')}
-                    </div>
-                  </div>
-                  <span className="text-foreground font-medium tabular-nums">{money(l.est_total ?? (Number(l.quantity) * Number(l.est_unit_cost)))}</span>
-                </div>
-              ))}
-            </div>
+          <div className="overflow-x-auto border border-border rounded-lg">
+            <table className="w-full text-sm">
+              <thead><tr className="text-left text-xs text-muted-foreground border-b border-border">
+                <th className="py-2 px-3 font-medium">Item</th>
+                <th className="py-2 px-3 font-medium text-right">Req</th>
+                <th className="py-2 px-3 font-medium text-right">Recv</th>
+                <th className="py-2 px-3 font-medium text-right">Rej</th>
+                <th className="py-2 px-3 font-medium text-right">Remaining</th>
+                <th className="py-2 px-3 font-medium">Status</th>
+                <th className="py-2 px-3 font-medium text-right">Est total</th>
+              </tr></thead>
+              <tbody>
+                {pr.lines.length === 0 ? <tr><td colSpan={7} className="p-3 text-sm text-muted-foreground">No lines.</td></tr> : pr.lines.map((l) => (
+                  <tr key={l.id} className="border-b border-border/60 last:border-0">
+                    <td className="py-2 px-3">
+                      <div className="text-foreground font-medium">{l.item_name || l.description}{l.specification ? <span className="text-muted-foreground font-normal"> · {l.specification}</span> : null}</div>
+                      <div className="text-xs text-muted-foreground">{[l.budget_category, l.supplier_name].filter(Boolean).join(' · ')}</div>
+                    </td>
+                    <td className="py-2 px-3 text-right tabular-nums">{qty(l.quantity)} {l.unit || ''}</td>
+                    <td className="py-2 px-3 text-right tabular-nums text-emerald-600">{qty(l.received_quantity)}</td>
+                    <td className="py-2 px-3 text-right tabular-nums text-red-600">{qty(l.rejected_quantity)}</td>
+                    <td className="py-2 px-3 text-right tabular-nums text-foreground">{qty(l.remaining_quantity)}</td>
+                    <td className="py-2 px-3"><span className={`px-2 py-0.5 rounded-full text-xs ${LINE_STATUS_STYLE[l.status] || 'bg-muted text-muted-foreground'}`}>{(l.status || 'requested').replace(/_/g, ' ')}</span></td>
+                    <td className="py-2 px-3 text-right tabular-nums">{money(l.est_total ?? (Number(l.quantity) * Number(l.est_unit_cost)))}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
 
           <div>
@@ -1116,32 +1152,93 @@ function RequestDetailModal({ projectId, requestId, canEdit, currency, onClose, 
               <div className="space-y-1">
                 {pr.receipts.map((g) => (
                   <div key={g.id} className="flex items-center gap-2 text-sm">
-                    <span className="text-foreground">recv {Number(g.received_qty)}</span>
-                    {Number(g.rejected_qty) > 0 && <span className="text-red-600">rej {Number(g.rejected_qty)}</span>}
-                    <span className="px-2 py-0.5 rounded-full text-xs bg-muted text-muted-foreground">{g.inspection_status}</span>
+                    <span className="text-foreground">{g.delivery_note_number ? `DN ${g.delivery_note_number}` : 'Receipt'}</span>
+                    {g.received_by_name && <span className="text-xs text-muted-foreground">by {g.received_by_name}</span>}
                     <span className="text-muted-foreground ml-auto">{new Date(g.received_at).toLocaleDateString()}</span>
                   </div>
                 ))}
               </div>
             )}
           </div>
-
-          {canEdit && pr.status !== 'closed' && pr.status !== 'rejected' && (
-            <div className="border-t border-border pt-3">
-              <div className="text-xs font-semibold text-muted-foreground uppercase mb-2">Record goods receipt</div>
-              <div className="flex flex-wrap items-end gap-2">
-                <div><label className="block text-xs text-muted-foreground mb-1">Received</label><input type="number" className={`${field} w-24`} value={rcv.received_qty} onChange={(e) => setRcv(s => ({ ...s, received_qty: e.target.value }))} /></div>
-                <div><label className="block text-xs text-muted-foreground mb-1">Rejected</label><input type="number" className={`${field} w-24`} value={rcv.rejected_qty} onChange={(e) => setRcv(s => ({ ...s, rejected_qty: e.target.value }))} /></div>
-                <div><label className="block text-xs text-muted-foreground mb-1">Inspection</label>
-                  <select className={`${field} w-32`} value={rcv.inspection_status} onChange={(e) => setRcv(s => ({ ...s, inspection_status: e.target.value }))}>
-                    {['pending','passed','failed','conditional'].map(x => <option key={x} value={x}>{x}</option>)}
-                  </select></div>
-                <button onClick={recordReceipt} className="px-3 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium">Record</button>
-              </div>
-            </div>
-          )}
         </div>
       )}
+
+      {showReceive && (
+        <ReceiveGoodsModal projectId={projectId} requestId={requestId} currency={currency} lines={pr.lines}
+          onClose={() => setShowReceive(false)} onDone={() => { setShowReceive(false); load(); onChanged(); }} toast={toast} />
+      )}
+    </Modal>
+  );
+}
+
+function ReceiveGoodsModal({ projectId, requestId, lines, onClose, onDone, toast }) {
+  const open = (lines || []).filter(l => Number(l.remaining_quantity) > 0);
+  const [rows, setRows] = useState(() => Object.fromEntries(open.map(l => [l.id, { receive: '', reject: '', actual_unit_cost: '', inspection_status: 'accepted', storage_location: '', rejection_reason: '' }])));
+  const [hdr, setHdr] = useState({ delivery_note_number: '', notes: '' });
+  const [saving, setSaving] = useState(false);
+  const setRow = (id, k, v) => setRows(r => ({ ...r, [id]: { ...r[id], [k]: v } }));
+
+  const submit = async () => {
+    const payload = open
+      .map(l => ({ l, r: rows[l.id] }))
+      .filter(({ r }) => Number(r.receive) > 0 || Number(r.reject) > 0)
+      .map(({ l, r }) => ({
+        line_item_id: l.id, quantity_received: Number(r.receive) || 0, quantity_rejected: Number(r.reject) || 0,
+        actual_unit_cost: r.actual_unit_cost === '' ? null : Number(r.actual_unit_cost),
+        inspection_status: r.inspection_status, storage_location: r.storage_location || null, rejection_reason: r.rejection_reason || null,
+      }));
+    if (payload.length === 0) { toast.error?.('Enter a received or rejected quantity on at least one line'); return; }
+    // client guard against over-receipt
+    for (const p of payload) {
+      const l = open.find(x => x.id === p.line_item_id);
+      if (p.quantity_received + p.quantity_rejected > Number(l.remaining_quantity)) {
+        toast.error?.(`"${l.item_name}": received + rejected exceeds remaining (${l.remaining_quantity})`); return;
+      }
+    }
+    setSaving(true);
+    try {
+      const res = await fetchWithAuth(`/api/projects/${projectId}/procurement/${requestId}/receipts`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ delivery_note_number: hdr.delivery_note_number || null, notes: hdr.notes || null, lines: payload }),
+      });
+      const j = await res.json();
+      if (j.success) { toast.success?.(`Goods received — request ${j.data.request_status.replace(/_/g, ' ')}`); onDone(); } else toast.error?.(j.error || 'Failed');
+    } finally { setSaving(false); }
+  };
+
+  return (
+    <Modal isOpen onClose={onClose} title="Receive Goods" size="xl" subtitle="Receive some or all lines, in any quantity"
+      footer={<div className="flex justify-end gap-2">
+        <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-border">Cancel</button>
+        <button onClick={submit} disabled={saving} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium disabled:opacity-60">{saving ? 'Saving…' : 'Record receipt'}</button>
+      </div>}>
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div><label className="block text-sm font-medium mb-1">Delivery note #</label><input className={field} value={hdr.delivery_note_number} onChange={(e) => setHdr(h => ({ ...h, delivery_note_number: e.target.value }))} /></div>
+          <div><label className="block text-sm font-medium mb-1">Notes</label><input className={field} value={hdr.notes} onChange={(e) => setHdr(h => ({ ...h, notes: e.target.value }))} /></div>
+        </div>
+        {open.length === 0 ? <p className="text-sm text-muted-foreground">All lines fully received.</p> : open.map((l) => (
+          <div key={l.id} className="border border-border rounded-lg p-3">
+            <div className="flex items-center justify-between mb-2">
+              <div className="text-sm font-medium text-foreground">{l.item_name}{l.specification ? <span className="text-muted-foreground font-normal"> · {l.specification}</span> : null}</div>
+              <div className="text-xs text-muted-foreground">remaining <b className="text-foreground">{Number(l.remaining_quantity)}</b> {l.unit || ''} (of {Number(l.quantity)})</div>
+            </div>
+            <div className="flex flex-wrap items-end gap-2">
+              <div><label className="block text-xs text-muted-foreground mb-1">Receive now</label><input type="number" min={0} max={Number(l.remaining_quantity)} className={`${field} w-24`} value={rows[l.id].receive} onChange={(e) => setRow(l.id, 'receive', e.target.value)} /></div>
+              <div><label className="block text-xs text-muted-foreground mb-1">Reject now</label><input type="number" min={0} className={`${field} w-24`} value={rows[l.id].reject} onChange={(e) => setRow(l.id, 'reject', e.target.value)} /></div>
+              <div><label className="block text-xs text-muted-foreground mb-1">Actual unit cost</label><input type="number" className={`${field} w-28`} placeholder={`${l.est_unit_cost}`} value={rows[l.id].actual_unit_cost} onChange={(e) => setRow(l.id, 'actual_unit_cost', e.target.value)} /></div>
+              <div><label className="block text-xs text-muted-foreground mb-1">Inspection</label>
+                <select className={`${field} w-36`} value={rows[l.id].inspection_status} onChange={(e) => setRow(l.id, 'inspection_status', e.target.value)}>
+                  {['accepted', 'partially_accepted', 'rejected', 'pending'].map(s => <option key={s} value={s}>{s.replace(/_/g, ' ')}</option>)}
+                </select></div>
+              <input className={`${field} flex-1 min-w-[120px]`} placeholder="Storage location" value={rows[l.id].storage_location} onChange={(e) => setRow(l.id, 'storage_location', e.target.value)} />
+            </div>
+            {Number(rows[l.id].reject) > 0 && (
+              <input className={`${field} mt-2`} placeholder="Rejection reason" value={rows[l.id].rejection_reason} onChange={(e) => setRow(l.id, 'rejection_reason', e.target.value)} />
+            )}
+          </div>
+        ))}
+      </div>
     </Modal>
   );
 }
