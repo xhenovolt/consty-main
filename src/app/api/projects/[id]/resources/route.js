@@ -40,15 +40,15 @@ export async function POST(request, { params }) {
       `INSERT INTO resources
          (project_id, name, category, type, unit_of_measure, size, mass_kg,
           quantity_required, quantity_available, unit_cost, currency, condition,
-          manufacturer, supplier_id, source, storage_location, is_reusable, attributes, notes, created_by)
+          manufacturer, supplier_id, source, storage_location, is_reusable, attributes, notes, catalog_item_id, created_by)
        VALUES ($1::uuid,$2,$3,$4,$5,$6,$7,
                COALESCE($8,0),COALESCE($9,0),COALESCE($10,0),COALESCE($11,'UGX'),$12,
-               $13,$14::uuid,$15,$16,COALESCE($17,false),COALESCE($18,'{}')::jsonb,$19,$20::uuid)
+               $13,$14::uuid,$15,$16,COALESCE($17,false),COALESCE($18,'{}')::jsonb,$19,$20::uuid,$21::uuid)
        RETURNING *`,
       [id, b.name, b.category, b.type || null, b.unit_of_measure || null, b.size || null, b.mass_kg ?? null,
        b.quantity_required ?? null, b.quantity_available ?? null, b.unit_cost ?? null, b.currency || null, b.condition || null,
        b.manufacturer || null, b.supplier_id || null, b.source || null, b.storage_location || null,
-       b.is_reusable ?? null, b.attributes ? JSON.stringify(b.attributes) : null, b.notes || null, auth.userId]
+       b.is_reusable ?? null, b.attributes ? JSON.stringify(b.attributes) : null, b.notes || null, b.catalog_item_id || null, auth.userId]
     );
     return NextResponse.json({ success: true, data: rows[0] }, { status: 201 });
   } catch (error) {

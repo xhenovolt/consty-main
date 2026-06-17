@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams } from 'next/navigation';
 import Link from 'next/link';
 import {
@@ -711,7 +711,42 @@ function ResourcesTab({ projectId, canEdit, currency, toast }) {
 function AddResourceModal({ projectId, currency, onClose, onAdded, toast }) {
   const [f, setF] = useState({ name: '', category: 'material', unit_of_measure: '', quantity_required: '', quantity_available: '', unit_cost: '', condition: 'new', manufacturer: '', grade: '', batch_number: '', expiry_date: '' });
   const [saving, setSaving] = useState(false);
+  const [sug, setSug] = useState([]);
+  const [showSug, setShowSug] = useState(false);
+  const [catalogItemId, setCatalogItemId] = useState(null);
+  const [saveToCatalog, setSaveToCatalog] = useState(false);
+  const skipRef = useRef(false);
   const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }));
+
+  // Catalog typeahead on the item name — search the company catalog + previously
+  // used materials so the user picks an existing item instead of duplicating it.
+  useEffect(() => {
+    if (skipRef.current) { skipRef.current = false; return; }
+    const q = f.name.trim();
+    setCatalogItemId(null);
+    if (q.length < 2) { setSug([]); setShowSug(false); return; }
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetchWithAuth(`/api/catalog?search=${encodeURIComponent(q)}`);
+        const j = await res.json();
+        if (j.success) { setSug(j.data.slice(0, 6)); setShowSug(true); }
+      } catch { /* ignore */ }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [f.name]);
+
+  const pick = (s) => {
+    skipRef.current = true;
+    setF((p) => ({
+      ...p, name: s.name, category: s.category || p.category,
+      unit_of_measure: s.unit_of_measure || p.unit_of_measure,
+      manufacturer: s.manufacturer || p.manufacturer,
+      unit_cost: s.unit_cost != null ? String(s.unit_cost) : p.unit_cost,
+      grade: s.specification || p.grade,
+    }));
+    setCatalogItemId(s.id || null);
+    setSug([]); setShowSug(false);
+  };
 
   const submit = async () => {
     if (!f.name.trim()) { toast.error?.('Name is required'); return; }
@@ -723,13 +758,24 @@ function AddResourceModal({ projectId, currency, onClose, onAdded, toast }) {
         if (f.batch_number) attributes.batch_number = f.batch_number;
         if (f.expiry_date) attributes.expiry_date = f.expiry_date;
       }
+      // Optionally promote this into the reusable catalog first.
+      let catId = catalogItemId;
+      if (!catId && saveToCatalog) {
+        const cres = await fetchWithAuth('/api/catalog', {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name: f.name, category: f.category, unit_of_measure: f.unit_of_measure || null,
+            specification: f.grade || null, manufacturer: f.manufacturer || null, default_unit_cost: Number(f.unit_cost) || 0, currency }),
+        });
+        const cj = await cres.json();
+        if (cj.success) catId = cj.data.id;
+      }
       const res = await fetchWithAuth(`/api/projects/${projectId}/resources`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           name: f.name, category: f.category, unit_of_measure: f.unit_of_measure || null,
           quantity_required: Number(f.quantity_required) || 0, quantity_available: Number(f.quantity_available) || 0,
           unit_cost: Number(f.unit_cost) || 0, currency, condition: f.condition || null,
-          manufacturer: f.manufacturer || null, attributes,
+          manufacturer: f.manufacturer || null, attributes, catalog_item_id: catId || null,
         }),
       });
       const json = await res.json();
@@ -739,13 +785,34 @@ function AddResourceModal({ projectId, currency, onClose, onAdded, toast }) {
 
   return (
     <Modal isOpen onClose={onClose} title="Add Resource" size="lg"
-      footer={<div className="flex justify-end gap-2">
-        <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted/50">Cancel</button>
-        <button onClick={submit} disabled={saving} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium disabled:opacity-60">{saving ? 'Adding…' : 'Add'}</button>
+      footer={<div className="flex items-center justify-between w-full gap-2">
+        <label className="inline-flex items-center gap-2 text-xs text-muted-foreground">
+          {catalogItemId
+            ? <span className="text-emerald-600">✓ linked to catalog</span>
+            : <><input type="checkbox" checked={saveToCatalog} onChange={(e) => setSaveToCatalog(e.target.checked)} /> Save to catalog for reuse</>}
+        </label>
+        <div className="flex gap-2">
+          <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted/50">Cancel</button>
+          <button onClick={submit} disabled={saving} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium disabled:opacity-60">{saving ? 'Adding…' : 'Add'}</button>
+        </div>
       </div>}>
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2"><label className="block text-sm font-medium mb-1">Name *</label><input className={field} value={f.name} onChange={set('name')} autoFocus placeholder="e.g. Cement (Tororo 32.5N)" /></div>
+          <div className="col-span-2 relative">
+            <label className="block text-sm font-medium mb-1">Name *</label>
+            <input className={field} value={f.name} onChange={set('name')} onFocus={() => sug.length && setShowSug(true)} autoFocus placeholder="Start typing — e.g. Cement" autoComplete="off" />
+            {showSug && sug.length > 0 && (
+              <div className="absolute z-20 left-0 right-0 mt-1 bg-card border border-border rounded-lg shadow-lg max-h-56 overflow-y-auto">
+                {sug.map((s, i) => (
+                  <button key={i} type="button" onClick={() => pick(s)} className="w-full text-left px-3 py-2 hover:bg-muted/50 flex items-center gap-2">
+                    <span className="text-sm text-foreground flex-1 min-w-0 truncate">{s.name}{s.specification ? ` · ${s.specification}` : ''}</span>
+                    <span className="text-xs text-muted-foreground">{s.category?.replace(/_/g, ' ')}</span>
+                    <span className={`text-[10px] px-1.5 py-0.5 rounded-full ${s.source === 'catalog' ? 'bg-emerald-100 text-emerald-700' : 'bg-muted text-muted-foreground'}`}>{s.source}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <div><label className="block text-sm font-medium mb-1">Category</label>
             <select className={field} value={f.category} onChange={set('category')}>{RESOURCE_CATEGORIES.map(c => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}</select></div>
           <div><label className="block text-sm font-medium mb-1">Unit of measure</label><input className={field} value={f.unit_of_measure} onChange={set('unit_of_measure')} placeholder="bags, kg, litres, hrs" /></div>

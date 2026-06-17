@@ -278,6 +278,20 @@ async function main() {
     await expectError(
       () => client.query(`INSERT INTO procurement_request_lines (request_id, item_name, budget_category) VALUES ($1,'x','not_a_category')`, [req2.id]),
       'invalid line budget_category rejected by CHECK');
+
+    // ── Resource catalog reuse ────────────────────────────────────────
+    const { rows: [ci] } = await client.query(
+      `INSERT INTO resource_catalog (name, category, unit_of_measure, default_unit_cost) VALUES ('Cement','material','bags',42000) RETURNING id`);
+    assert(!!ci.id, 'create reusable catalog item');
+    await client.query(`INSERT INTO resources (project_id, name, category, catalog_item_id, quantity_required) VALUES ($1,'Cement','material',$2,100)`, [dp.id, ci.id]);
+    const linked = (await client.query(`SELECT count(*)::int n FROM resources WHERE catalog_item_id=$1`, [ci.id])).rows[0].n;
+    assert(linked === 1, `project resource links to catalog item (got ${linked})`);
+    await expectError(
+      () => client.query(`INSERT INTO resources (project_id, name, category, catalog_item_id) VALUES ($1,'x','material','00000000-0000-0000-0000-000000000000')`, [dp.id]),
+      'invalid catalog_item_id rejected by FK');
+    await expectError(
+      () => client.query(`INSERT INTO resource_catalog (name, category) VALUES ('x','not_a_category')`),
+      'invalid catalog category rejected by CHECK');
   } finally {
     await client.query('ROLLBACK'); // nothing persists
   }

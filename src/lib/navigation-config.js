@@ -82,6 +82,10 @@ export const menuItems = [
   },
   { label: 'Reports', href: '/app/reports', icon: BarChart3, category: 'sections', module: 'reports', permission: 'reports.view' },
 
+  // ─────────────────────── RESOURCES ──────────────────────
+  { kind: 'header', label: 'Resources' },
+  { label: 'Resource Catalog', href: '/app/catalog', icon: Package, category: 'sections', module: 'projects', permission: 'projects.view' },
+
   // ──────────────────────── RECORDS ───────────────────────
   { kind: 'header', label: 'Records' },
   {
