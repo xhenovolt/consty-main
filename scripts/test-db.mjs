@@ -292,6 +292,47 @@ async function main() {
     await expectError(
       () => client.query(`INSERT INTO resource_catalog (name, category) VALUES ('x','not_a_category')`),
       'invalid catalog category rejected by CHECK');
+
+    // ── Partial / batch receiving chain (DB-level guarantees) ─────────
+    const { rows: [rp] } = await client.query(`INSERT INTO projects (code,name,status,created_by) VALUES ($1,'Recv','active',$2) RETURNING id`, [`RCV-${Date.now()}`, uid]);
+    const { rows: [rreq] } = await client.query(`INSERT INTO procurement_requests (project_id,title,status,budget_category) VALUES ($1,'Cement order','approved','materials') RETURNING id`, [rp.id]);
+    const { rows: [pl] } = await client.query(
+      `INSERT INTO procurement_request_lines (request_id, item_name, quantity, unit, est_unit_cost, budget_category, status)
+       VALUES ($1,'Cement',100,'bags',40000,'materials','ordered') RETURNING id`, [rreq.id]);
+    let rem = Number((await client.query(`SELECT remaining_quantity FROM procurement_request_lines WHERE id=$1`, [pl.id])).rows[0].remaining_quantity);
+    assert(rem === 100, `generated remaining = 100 before receipt (got ${rem})`);
+
+    // receive 40 of 100
+    await client.query(`UPDATE procurement_request_lines SET received_quantity=40, status='partially_received' WHERE id=$1`, [pl.id]);
+    rem = Number((await client.query(`SELECT remaining_quantity FROM procurement_request_lines WHERE id=$1`, [pl.id])).rows[0].remaining_quantity);
+    assert(rem === 60, `generated remaining = 60 after receiving 40 (got ${rem})`);
+    await expectError(
+      () => client.query(`UPDATE procurement_request_lines SET received_quantity=110 WHERE id=$1`, [pl.id]),
+      'over-receipt (received+rejected > requested) rejected by CHECK');
+
+    // commitment recompute from remaining value (mirrors receive route)
+    await client.query(`INSERT INTO commitments (project_id, procurement_request_id, amount, budget_category, status) VALUES ($1,$2,4000000,'materials','open')`, [rp.id, rreq.id]);
+    await client.query(
+      `UPDATE commitments c SET amount=sub.val, status=CASE WHEN sub.val<=0 THEN 'settled' ELSE 'open' END
+       FROM (SELECT COALESCE(budget_category,'other') bc, SUM(remaining_quantity*est_unit_cost) val FROM procurement_request_lines WHERE request_id=$1 GROUP BY COALESCE(budget_category,'other')) sub
+       WHERE c.procurement_request_id=$1 AND COALESCE(c.budget_category,'other')=sub.bc`, [rreq.id]);
+    const commit = Number((await client.query(`SELECT amount FROM commitments WHERE procurement_request_id=$1`, [rreq.id])).rows[0].amount);
+    assert(commit === 60 * 40000, `remaining commitment = 60×40000 = 2,400,000 (got ${commit})`);
+
+    // expected→partial resource sync (mirrors receive route)
+    await client.query(`INSERT INTO resources (project_id,name,category,quantity_required,incoming_quantity,source_type,source_line_item_id,status) VALUES ($1,'Cement','material',100,100,'procurement',$2,'incoming')`, [rp.id, pl.id]);
+    await client.query(`UPDATE resources SET quantity_available=40, incoming_quantity=60, status='partially_available' WHERE source_line_item_id=$1`, [pl.id]);
+    const rsrc = (await client.query(`SELECT quantity_available a, incoming_quantity i, status FROM resources WHERE source_line_item_id=$1`, [pl.id])).rows[0];
+    assert(Number(rsrc.a) === 40 && Number(rsrc.i) === 60 && rsrc.status === 'partially_available', `resource: available 40, incoming 60, partially_available (got a=${rsrc.a} i=${rsrc.i} ${rsrc.status})`);
+
+    // budget: accepted received → actual; remaining stays committed
+    await client.query(`INSERT INTO budget_lines (project_id,category,allocated) VALUES ($1,'materials',5000000) ON CONFLICT (project_id,category) DO UPDATE SET allocated=5000000`, [rp.id]);
+    const { rows: [acc2] } = await client.query(`INSERT INTO accounts (name,type) VALUES ('Recv Cash','cash') RETURNING id`);
+    await client.query(`INSERT INTO expenses (project_id,account_id,amount,currency,category,description,created_by) VALUES ($1,$2,1600000,'UGX','materials','Goods received',$3)`, [rp.id, acc2.id, uid]);
+    await client.query(`SELECT fn_recompute_budget($1)`, [rp.id]);
+    const pbg = (await client.query(`SELECT actual_amount, committed_amount FROM project_budgets WHERE project_id=$1`, [rp.id])).rows[0];
+    assert(Number(pbg.actual_amount) === 1600000 && Number(pbg.committed_amount) === 2400000,
+      `budget: actual=1.6M (received), committed=2.4M (remaining) (got a=${pbg.actual_amount} c=${pbg.committed_amount})`);
   } finally {
     await client.query('ROLLBACK'); // nothing persists
   }

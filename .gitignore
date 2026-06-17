@@ -50,6 +50,8 @@ yarn-error.log*
 !/README.md
 !/CONSTY_DOMAIN_ARCHITECTURE.md
 !/CONSTY_PRODUCT_AUDIT.md
+!/CONSTY_BUDGET_PROCUREMENT_AUDIT.md
+!/CONSTY_RECEIVING_AUDIT.md
 
 # database dumps and backups
 Backup/
