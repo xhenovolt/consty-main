@@ -55,18 +55,32 @@ export async function PATCH(request, { params }) {
         WHERE id = $${values.length - 1} AND project_id = $${values.length} RETURNING *`, values);
     const pr = rows[0];
 
-    // Budget side-effects: a commitment is the bridge into the project budget.
+    // Budget side-effects: commitments are the bridge into the project budget,
+    // created PER budget category from the request's line items.
     if (b.status && b.status !== cur.status) {
-      const existing = (await query(`SELECT id, status FROM commitments WHERE procurement_request_id=$1`, [prid])).rows[0];
-      if (b.status === 'approved' && !existing) {
+      const have = (await query(`SELECT count(*)::int n FROM commitments WHERE procurement_request_id=$1`, [prid])).rows[0].n;
+      if (b.status === 'approved' && have === 0) {
+        // One commitment per budget category, summing that category's line totals.
         await query(
-          `INSERT INTO commitments (project_id, work_item_id, procurement_request_id, amount, currency, status, created_by)
-           VALUES ($1::uuid,$2::uuid,$3::uuid,$4,$5,'open',$6::uuid)`,
-          [id, pr.work_item_id || null, prid, pr.total_est_cost, pr.currency, auth.userId]);
-      } else if (b.status === 'closed' && existing) {
-        await query(`UPDATE commitments SET status='settled', updated_at=now() WHERE id=$1`, [existing.id]);
-      } else if (b.status === 'rejected' && existing) {
-        await query(`UPDATE commitments SET status='cancelled', updated_at=now() WHERE id=$1`, [existing.id]);
+          `INSERT INTO commitments (project_id, work_item_id, procurement_request_id, amount, currency, status, budget_category, created_by)
+           SELECT $1::uuid, $2::uuid, $3::uuid,
+                  COALESCE(SUM(l.est_total),0), $4,
+                  'open', COALESCE(l.budget_category, $5, 'other'), $6::uuid
+             FROM procurement_request_lines l
+            WHERE l.request_id = $3::uuid
+            GROUP BY COALESCE(l.budget_category, $5, 'other')`,
+          [id, pr.work_item_id || null, prid, pr.currency, pr.budget_category || null, auth.userId]);
+        // Fallback: a request with no lines still reserves its header total.
+        await query(
+          `INSERT INTO commitments (project_id, work_item_id, procurement_request_id, amount, currency, status, budget_category, created_by)
+           SELECT $1::uuid,$2::uuid,$3::uuid,$4,$5,'open',COALESCE($6,'other'),$7::uuid
+           WHERE NOT EXISTS (SELECT 1 FROM commitments WHERE procurement_request_id=$3::uuid)
+             AND $4 > 0`,
+          [id, pr.work_item_id || null, prid, pr.total_est_cost, pr.currency, pr.budget_category || null, auth.userId]);
+      } else if (b.status === 'closed') {
+        await query(`UPDATE commitments SET status='settled', updated_at=now() WHERE procurement_request_id=$1 AND status='open'`, [prid]);
+      } else if (b.status === 'rejected') {
+        await query(`UPDATE commitments SET status='cancelled', updated_at=now() WHERE procurement_request_id=$1 AND status='open'`, [prid]);
       }
       // Keep the project budget's committed total in sync (forecast/status are
       // fully reconciled when the Budget tab recomputes on load).

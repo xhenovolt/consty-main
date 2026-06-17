@@ -114,6 +114,7 @@ export const menuItems = [
       { label: 'Expenses', href: '/app/finance/expenses', description: 'Track site and office spending', permission: 'expenses.view' },
       { label: 'Transfers', href: '/app/finance/transfers', description: 'Move funds between accounts', permission: 'finance.view' },
       { label: 'Company Budgets', href: '/app/finance/budgets', description: 'Overhead and company budget limits', permission: 'budgets.view' },
+      { label: 'Project Budgets', href: '/app/finance/project-budgets', description: 'Portfolio rollup of project budgets', permission: 'budgets.view' },
       { label: '---', href: '#', description: '', permission: null },
       { label: 'Banking', href: '/app/finance/banking', description: 'Internal cash and banking controls', permission: 'finance.manage' },
       { label: 'Employee Loans', href: '/app/finance/loans', description: 'Staff loan tracking', permission: 'finance.manage' },

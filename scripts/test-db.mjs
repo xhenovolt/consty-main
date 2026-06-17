@@ -234,6 +234,42 @@ async function main() {
     const shortages = Number((await client.query(
       `SELECT count(*)::int n FROM resources WHERE project_id=ANY($1::uuid[]) AND quantity_available < quantity_required`, [[dp.id]])).rows[0].n);
     assert(shortages === 1, `dashboard: resource-shortage aggregate counts 1 (got ${shortages})`);
+
+    // ── Project expense → actual spend bridge (mirrors expenses route) ─
+    await client.query(`INSERT INTO project_budgets (project_id, allocated_amount) VALUES ($1, 5000)`, [dp.id]);
+    const { rows: [acct] } = await client.query(`INSERT INTO accounts (name, type) VALUES ('Test Cash','cash') RETURNING id`);
+    await client.query(`INSERT INTO expenses (project_id, account_id, amount, currency, category, description, created_by) VALUES ($1, $2, 1500, 'UGX', 'materials', 'Cement purchase', $3)`, [dp.id, acct.id, uid]);
+    await client.query(`UPDATE project_budgets SET actual_amount = (SELECT COALESCE(SUM(amount),0) FROM expenses WHERE project_id=$1) WHERE project_id=$1`, [dp.id]);
+    const actual = Number((await client.query(`SELECT actual_amount FROM project_budgets WHERE project_id=$1`, [dp.id])).rows[0].actual_amount);
+    assert(actual === 1500, `project expense rolls into budget actual (got ${actual})`);
+    // and it surfaces in the finance rollup query
+    const rollup = (await client.query(
+      `SELECT pb.actual_amount FROM projects p JOIN project_budgets pb ON pb.project_id=p.id WHERE p.id=ANY($1::uuid[])`, [[dp.id]])).rows;
+    assert(rollup.length === 1 && Number(rollup[0].actual_amount) === 1500, 'project budget appears in finance rollup with actual=1500');
+
+    // ── Procurement line identity + per-category commitments ──────────
+    const { rows: [req2] } = await client.query(
+      `INSERT INTO procurement_requests (project_id, title, budget_category, requested_by) VALUES ($1,'Foundation','materials',$2) RETURNING id`, [pid, uid]);
+    await client.query(
+      `INSERT INTO procurement_request_lines (request_id, item_name, specification, quantity, unit, est_unit_cost, budget_category)
+       VALUES ($1,'Cement','Tororo PPC 32.5R',200,'Bags',42000,'materials'),
+              ($1,'Rebar','Y12 Steel',80,'Pieces',35000,'materials'),
+              ($1,'Mixer hire','Petrol',1,'Day',150000,'equipment')`, [req2.id]);
+    const cement = (await client.query(`SELECT est_total FROM procurement_request_lines WHERE request_id=$1 AND item_name='Cement'`, [req2.id])).rows[0];
+    assert(Number(cement.est_total) === 200 * 42000, `line est_total generated = qty×unit_cost (got ${cement.est_total})`);
+
+    // approve side-effect (mirror route): one commitment per budget category
+    await client.query(
+      `INSERT INTO commitments (project_id, procurement_request_id, amount, currency, status, budget_category, created_by)
+       SELECT $1,$2,COALESCE(SUM(est_total),0),'UGX','open',COALESCE(budget_category,'other'),$3
+         FROM procurement_request_lines WHERE request_id=$2 GROUP BY COALESCE(budget_category,'other')`, [pid, req2.id, uid]);
+    const cats = (await client.query(`SELECT budget_category, amount FROM commitments WHERE procurement_request_id=$1`, [req2.id])).rows;
+    assert(cats.length === 2, `approve creates one commitment per category (got ${cats.length})`);
+    const mat = cats.find(c => c.budget_category === 'materials');
+    assert(mat && Number(mat.amount) === 200 * 42000 + 80 * 35000, `materials commitment = Σ materials lines (got ${mat?.amount})`);
+    await expectError(
+      () => client.query(`INSERT INTO procurement_request_lines (request_id, item_name, budget_category) VALUES ($1,'x','not_a_category')`, [req2.id]),
+      'invalid line budget_category rejected by CHECK');
   } finally {
     await client.query('ROLLBACK'); // nothing persists
   }

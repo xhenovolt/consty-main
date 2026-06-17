@@ -111,7 +111,7 @@ export default function ProjectDetailPage() {
             users={users} onAdd={(parent) => setAddParent(parent)} onChanged={load} toast={toast} />
         )}
         {tab === 'budget' && (
-          <BudgetTab projectId={id} canEdit={canEdit} currency={project.currency} toast={toast} onChanged={load} />
+          <BudgetTab projectId={id} canEdit={canEdit} currency={project.currency} items={items} toast={toast} onChanged={load} />
         )}
         {tab === 'resources' && (
           <ResourcesTab projectId={id} canEdit={canEdit} currency={project.currency} toast={toast} />
@@ -342,25 +342,30 @@ const BUDGET_STATUS_STYLE = {
 };
 const FUNDING_TYPES = ['company_wallet','client_deposit','external_funder','loan','grant','donor','retained_earnings','manual_external'];
 
-function BudgetTab({ projectId, canEdit, currency, toast, onChanged }) {
+function BudgetTab({ projectId, canEdit, currency, items, toast, onChanged }) {
   const [data, setData] = useState(null);
+  const [expenses, setExpenses] = useState([]);
   const [loading, setLoading] = useState(true);
   const [alloc, setAlloc] = useState('');
   const [forecast, setForecast] = useState('');
   const [frozen, setFrozen] = useState(false);
   const [fund, setFund] = useState({ source_type: 'company_wallet', name: '', amount: '', status: 'pledged' });
+  const [showExp, setShowExp] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
     try {
-      const res = await fetchWithAuth(`/api/projects/${projectId}/budget`);
-      const json = await res.json();
-      if (json.success) {
-        setData(json.data);
-        setAlloc(json.data.budget?.allocated_amount ?? '');
-        setForecast(json.data.budget?.forecast_amount ?? '');
-        setFrozen(!!json.data.budget?.is_frozen);
+      const [bRes, eRes] = await Promise.all([
+        fetchWithAuth(`/api/projects/${projectId}/budget`).then(r => r.json()),
+        fetchWithAuth(`/api/projects/${projectId}/expenses`).then(r => r.json()),
+      ]);
+      if (bRes.success) {
+        setData(bRes.data);
+        setAlloc(bRes.data.budget?.allocated_amount ?? '');
+        setForecast(bRes.data.budget?.forecast_amount ?? '');
+        setFrozen(!!bRes.data.budget?.is_frozen);
       }
+      if (eRes.success) setExpenses(eRes.data);
     } finally { setLoading(false); }
   }, [projectId]);
   useEffect(() => { load(); }, [load]);
@@ -470,7 +475,72 @@ function BudgetTab({ projectId, canEdit, currency, toast, onChanged }) {
           </div>
         )}
       </div>
+
+      {/* Project expenses (actual spend) */}
+      <div className="bg-card border border-border rounded-xl">
+        <div className="px-4 py-3 border-b border-border flex items-center justify-between">
+          <h3 className="text-sm font-semibold text-foreground">Project expenses <span className="text-muted-foreground font-normal">(actual spend)</span></h3>
+          {canEdit && <button onClick={() => setShowExp(true)} className="inline-flex items-center gap-1 text-sm text-primary"><Plus size={15} /> Log expense</button>}
+        </div>
+        {expenses.length === 0 ? (
+          <div className="p-6 text-sm text-muted-foreground text-center">No expenses logged. Logged expenses roll up into Actual spent above.</div>
+        ) : (
+          <div className="divide-y divide-border">
+            {expenses.slice(0, 10).map((e) => (
+              <div key={e.id} className="flex items-center gap-3 p-3 text-sm">
+                <span className="text-foreground flex-1 min-w-0 truncate">{e.description || e.category || 'Expense'}{e.work_item_name ? ` · ${e.work_item_name}` : ''}</span>
+                {e.vendor && <span className="text-xs text-muted-foreground">{e.vendor}</span>}
+                <span className="text-muted-foreground">{e.expense_date ? new Date(e.expense_date).toLocaleDateString() : ''}</span>
+                <span className="font-medium text-foreground">{money(e.amount)}</span>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {showExp && (
+        <AddExpenseModal projectId={projectId} currency={currency} items={items}
+          onClose={() => setShowExp(false)} onDone={() => { setShowExp(false); load(); onChanged?.(); }} toast={toast} />
+      )}
     </div>
+  );
+}
+
+function AddExpenseModal({ projectId, currency, items, onClose, onDone, toast }) {
+  const [f, setF] = useState({ amount: '', category: '', vendor: '', description: '', expense_date: '', work_item_id: '' });
+  const [saving, setSaving] = useState(false);
+  const set = (k) => (e) => setF((p) => ({ ...p, [k]: e.target.value }));
+  const submit = async () => {
+    if (!(Number(f.amount) > 0)) { toast.error?.('Enter a positive amount'); return; }
+    setSaving(true);
+    try {
+      const res = await fetchWithAuth(`/api/projects/${projectId}/expenses`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ...f, amount: Number(f.amount), currency, work_item_id: f.work_item_id || null, expense_date: f.expense_date || null }),
+      });
+      const j = await res.json();
+      if (j.success) { toast.success?.('Expense logged'); onDone(); } else toast.error?.(j.error || 'Failed');
+    } finally { setSaving(false); }
+  };
+  return (
+    <Modal isOpen onClose={onClose} title="Log Project Expense"
+      footer={<div className="flex justify-end gap-2"><button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-border">Cancel</button><button onClick={submit} disabled={saving} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium disabled:opacity-60">{saving ? 'Saving…' : 'Log'}</button></div>}>
+      <div className="space-y-4">
+        <div className="grid grid-cols-2 gap-3">
+          <div><label className="block text-sm font-medium mb-1">Amount ({currency}) *</label><input type="number" className={field} value={f.amount} onChange={set('amount')} autoFocus /></div>
+          <div><label className="block text-sm font-medium mb-1">Date</label><input type="date" className={field} value={f.expense_date} onChange={set('expense_date')} /></div>
+        </div>
+        <div className="grid grid-cols-2 gap-3">
+          <div><label className="block text-sm font-medium mb-1">Category</label><input className={field} value={f.category} onChange={set('category')} placeholder="materials, labour, fuel…" /></div>
+          <div><label className="block text-sm font-medium mb-1">Vendor</label><input className={field} value={f.vendor} onChange={set('vendor')} /></div>
+        </div>
+        <div><label className="block text-sm font-medium mb-1">Description</label><input className={field} value={f.description} onChange={set('description')} /></div>
+        <div><label className="block text-sm font-medium mb-1">Work item (optional)</label>
+          <select className={field} value={f.work_item_id} onChange={set('work_item_id')}>
+            <option value="">— None —</option>{(items || []).map(w => <option key={w.id} value={w.id}>{w.name}</option>)}
+          </select></div>
+      </div>
+    </Modal>
   );
 }
 
@@ -755,21 +825,36 @@ function ProcurementTab({ projectId, canEdit, currency, toast }) {
   );
 }
 
+const BUDGET_CATEGORIES = ['materials', 'labour', 'transport', 'equipment', 'permits', 'subcontractors', 'contingency', 'other'];
+const EMPTY_LINE = { item_name: '', specification: '', quantity: '', unit: '', est_unit_cost: '', supplier_name: '', budget_category: '' };
+
 function NewRequestModal({ projectId, currency, onClose, onDone, toast }) {
-  const [title, setTitle] = useState('');
-  const [neededBy, setNeededBy] = useState('');
-  const [lines, setLines] = useState([{ description: '', quantity: '', unit: '', est_unit_cost: '' }]);
+  const [hdr, setHdr] = useState({ title: '', reason: '', needed_by: '', budget_category: 'materials' });
+  const [lines, setLines] = useState([{ ...EMPTY_LINE }]);
   const [saving, setSaving] = useState(false);
+  const setH = (k) => (e) => setHdr(h => ({ ...h, [k]: e.target.value }));
   const setLine = (i, k, v) => setLines(ls => ls.map((l, j) => j === i ? { ...l, [k]: v } : l));
-  const total = lines.reduce((s, l) => s + (Number(l.quantity) || 0) * (Number(l.est_unit_cost) || 0), 0);
+  const lineTotal = (l) => (Number(l.quantity) || 0) * (Number(l.est_unit_cost) || 0);
+  const total = lines.reduce((s, l) => s + lineTotal(l), 0);
+  const money = (v) => `${currency} ${Number(v || 0).toLocaleString()}`;
 
   const submit = async () => {
-    if (!title.trim()) { toast.error?.('Title is required'); return; }
+    if (!hdr.title.trim()) { toast.error?.('Title is required'); return; }
+    const valid = lines.filter(l => l.item_name.trim());
+    if (valid.length === 0) { toast.error?.('Add at least one line item'); return; }
     setSaving(true);
     try {
       const res = await fetchWithAuth(`/api/projects/${projectId}/procurement`, {
         method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, needed_by: neededBy || null, currency, lines: lines.filter(l => l.description.trim()) }),
+        body: JSON.stringify({
+          title: hdr.title, reason: hdr.reason || null, needed_by: hdr.needed_by || null,
+          budget_category: hdr.budget_category, currency,
+          lines: valid.map(l => ({
+            item_name: l.item_name, specification: l.specification || null, quantity: Number(l.quantity) || 0,
+            unit: l.unit || null, est_unit_cost: Number(l.est_unit_cost) || 0,
+            supplier_name: l.supplier_name || null, budget_category: l.budget_category || hdr.budget_category,
+          })),
+        }),
       });
       const json = await res.json();
       if (json.success) { toast.success?.('Request created'); onDone(); } else toast.error?.(json.error || 'Failed');
@@ -777,9 +862,9 @@ function NewRequestModal({ projectId, currency, onClose, onDone, toast }) {
   };
 
   return (
-    <Modal isOpen onClose={onClose} title="New Procurement Request" size="lg"
+    <Modal isOpen onClose={onClose} title="New Procurement Request" size="xl"
       footer={<div className="flex items-center justify-between w-full">
-        <span className="text-sm text-muted-foreground">Est. total: <b className="text-foreground">{currency} {total.toLocaleString()}</b></span>
+        <span className="text-sm text-muted-foreground">Est. total: <b className="text-foreground">{money(total)}</b></span>
         <div className="flex gap-2">
           <button onClick={onClose} className="px-4 py-2 text-sm rounded-lg border border-border hover:bg-muted/50">Cancel</button>
           <button onClick={submit} disabled={saving} className="px-4 py-2 text-sm rounded-lg bg-primary text-primary-foreground font-medium disabled:opacity-60">{saving ? 'Creating…' : 'Create'}</button>
@@ -787,22 +872,37 @@ function NewRequestModal({ projectId, currency, onClose, onDone, toast }) {
       </div>}>
       <div className="space-y-4">
         <div className="grid grid-cols-2 gap-3">
-          <div className="col-span-2"><label className="block text-sm font-medium mb-1">Title *</label><input className={field} value={title} onChange={(e) => setTitle(e.target.value)} autoFocus placeholder="e.g. Cement & rebar for foundation" /></div>
-          <div><label className="block text-sm font-medium mb-1">Needed by</label><input type="date" className={field} value={neededBy} onChange={(e) => setNeededBy(e.target.value)} /></div>
+          <div className="col-span-2"><label className="block text-sm font-medium mb-1">Title *</label><input className={field} value={hdr.title} onChange={setH('title')} autoFocus placeholder="e.g. Foundation materials — block A" /></div>
+          <div><label className="block text-sm font-medium mb-1">Needed by</label><input type="date" className={field} value={hdr.needed_by} onChange={setH('needed_by')} /></div>
+          <div><label className="block text-sm font-medium mb-1">Default budget category</label>
+            <select className={field} value={hdr.budget_category} onChange={setH('budget_category')}>{BUDGET_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}</select></div>
+          <div className="col-span-2"><label className="block text-sm font-medium mb-1">Reason</label><input className={field} value={hdr.reason} onChange={setH('reason')} placeholder="Why is this needed?" /></div>
         </div>
+
         <div>
-          <div className="flex items-center justify-between mb-1">
+          <div className="flex items-center justify-between mb-2">
             <label className="text-sm font-medium">Line items</label>
-            <button onClick={() => setLines(ls => [...ls, { description: '', quantity: '', unit: '', est_unit_cost: '' }])} className="text-xs text-primary inline-flex items-center gap-1"><Plus size={13} /> Add line</button>
+            <button onClick={() => setLines(ls => [...ls, { ...EMPTY_LINE }])} className="text-xs text-primary inline-flex items-center gap-1"><Plus size={13} /> Add line</button>
           </div>
-          <div className="space-y-2">
+          <div className="space-y-3">
             {lines.map((l, i) => (
-              <div key={i} className="flex gap-2">
-                <input className={`${field} flex-1`} placeholder="Description" value={l.description} onChange={(e) => setLine(i, 'description', e.target.value)} />
-                <input type="number" className={`${field} w-20`} placeholder="Qty" value={l.quantity} onChange={(e) => setLine(i, 'quantity', e.target.value)} />
-                <input className={`${field} w-20`} placeholder="Unit" value={l.unit} onChange={(e) => setLine(i, 'unit', e.target.value)} />
-                <input type="number" className={`${field} w-28`} placeholder="Unit cost" value={l.est_unit_cost} onChange={(e) => setLine(i, 'est_unit_cost', e.target.value)} />
-                {lines.length > 1 && <button onClick={() => setLines(ls => ls.filter((_, j) => j !== i))} className="p-2 text-muted-foreground hover:text-red-600"><Trash2 size={14} /></button>}
+              <div key={i} className="border border-border rounded-lg p-3 space-y-2">
+                <div className="flex gap-2">
+                  <input className={`${field} flex-1`} placeholder="Item name (e.g. Cement)" value={l.item_name} onChange={(e) => setLine(i, 'item_name', e.target.value)} />
+                  <input className={`${field} flex-1`} placeholder="Specification (e.g. Tororo PPC 32.5R)" value={l.specification} onChange={(e) => setLine(i, 'specification', e.target.value)} />
+                  {lines.length > 1 && <button onClick={() => setLines(ls => ls.filter((_, j) => j !== i))} className="p-2 text-muted-foreground hover:text-red-600 shrink-0"><Trash2 size={14} /></button>}
+                </div>
+                <div className="flex flex-wrap gap-2 items-center">
+                  <input type="number" className={`${field} w-20`} placeholder="Qty" value={l.quantity} onChange={(e) => setLine(i, 'quantity', e.target.value)} />
+                  <input className={`${field} w-20`} placeholder="Unit" value={l.unit} onChange={(e) => setLine(i, 'unit', e.target.value)} />
+                  <input type="number" className={`${field} w-28`} placeholder="Unit cost" value={l.est_unit_cost} onChange={(e) => setLine(i, 'est_unit_cost', e.target.value)} />
+                  <span className="text-sm text-muted-foreground w-32 text-right tabular-nums">= {money(lineTotal(l))}</span>
+                  <select className={`${field} w-36`} value={l.budget_category} onChange={(e) => setLine(i, 'budget_category', e.target.value)}>
+                    <option value="">{hdr.budget_category} (default)</option>
+                    {BUDGET_CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                  </select>
+                  <input className={`${field} flex-1 min-w-[120px]`} placeholder="Supplier / source" value={l.supplier_name} onChange={(e) => setLine(i, 'supplier_name', e.target.value)} />
+                </div>
               </div>
             ))}
           </div>
@@ -859,10 +959,15 @@ function RequestDetailModal({ projectId, requestId, canEdit, currency, onClose, 
             <div className="text-xs font-semibold text-muted-foreground uppercase mb-1">Line items</div>
             <div className="border border-border rounded-lg divide-y divide-border">
               {pr.lines.length === 0 ? <div className="p-3 text-sm text-muted-foreground">No lines.</div> : pr.lines.map((l) => (
-                <div key={l.id} className="flex items-center gap-2 p-2 text-sm">
-                  <span className="flex-1 text-foreground">{l.description}</span>
-                  <span className="text-muted-foreground">{Number(l.quantity)} {l.unit}</span>
-                  <span className="text-foreground">{money(Number(l.quantity) * Number(l.est_unit_cost))}</span>
+                <div key={l.id} className="flex items-start gap-2 p-2 text-sm">
+                  <div className="min-w-0 flex-1">
+                    <div className="text-foreground font-medium">{l.item_name || l.description}{l.specification ? <span className="text-muted-foreground font-normal"> · {l.specification}</span> : null}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {[`${Number(l.quantity)} ${l.unit || ''}`.trim() + ` @ ${money(l.est_unit_cost)}`,
+                        l.budget_category, l.supplier_name].filter(Boolean).join(' · ')}
+                    </div>
+                  </div>
+                  <span className="text-foreground font-medium tabular-nums">{money(l.est_total ?? (Number(l.quantity) * Number(l.est_unit_cost)))}</span>
                 </div>
               ))}
             </div>

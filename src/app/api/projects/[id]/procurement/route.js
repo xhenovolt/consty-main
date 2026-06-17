@@ -32,24 +32,28 @@ export async function POST(request, { params }) {
   try {
     const b = await request.json();
     if (!b.title) return NextResponse.json({ success: false, error: 'title is required' }, { status: 400 });
-    const lines = Array.isArray(b.lines) ? b.lines.filter(l => l && l.description) : [];
+    // Each line needs at least an item name.
+    const lines = Array.isArray(b.lines) ? b.lines.filter(l => l && (l.item_name || l.description)) : [];
     const total = lines.reduce((s, l) => s + (Number(l.quantity) || 0) * (Number(l.est_unit_cost) || 0), 0);
 
     const { rows } = await query(
       `INSERT INTO procurement_requests
-         (project_id, work_item_id, title, description, supplier_id, total_est_cost, currency, needed_by, requested_by, notes)
-       VALUES ($1::uuid,$2::uuid,$3,$4,$5::uuid,$6,COALESCE($7,'UGX'),$8::date,$9::uuid,$10)
+         (project_id, work_item_id, title, reason, budget_category, supplier_id, total_est_cost, currency, needed_by, requested_by, notes)
+       VALUES ($1::uuid,$2::uuid,$3,$4,$5,$6::uuid,$7,COALESCE($8,'UGX'),$9::date,$10::uuid,$11)
        RETURNING *`,
-      [id, b.work_item_id || null, b.title, b.description || null, b.supplier_id || null,
+      [id, b.work_item_id || null, b.title, b.reason || null, b.budget_category || null, b.supplier_id || null,
        total, b.currency || null, b.needed_by || null, auth.userId, b.notes || null]
     );
     const pr = rows[0];
 
     for (const l of lines) {
       await query(
-        `INSERT INTO procurement_request_lines (request_id, resource_id, description, quantity, unit, est_unit_cost)
-         VALUES ($1::uuid,$2::uuid,$3,COALESCE($4,0),$5,COALESCE($6,0))`,
-        [pr.id, l.resource_id || null, l.description, l.quantity ?? null, l.unit || null, l.est_unit_cost ?? null]
+        `INSERT INTO procurement_request_lines
+           (request_id, item_name, specification, quantity, unit, est_unit_cost, supplier_name, supplier_id, budget_category, description)
+         VALUES ($1::uuid,$2,$3,COALESCE($4,0),$5,COALESCE($6,0),$7,$8::uuid,COALESCE($9,$10),$11)`,
+        [pr.id, l.item_name || l.description || 'Item', l.specification || null, l.quantity ?? null, l.unit || null,
+         l.est_unit_cost ?? null, l.supplier_name || null, l.supplier_id || null, l.budget_category || null,
+         b.budget_category || null, l.notes || null]
       );
     }
     return NextResponse.json({ success: true, data: pr }, { status: 201 });
