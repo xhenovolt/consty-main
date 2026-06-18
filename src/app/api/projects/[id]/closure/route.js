@@ -3,9 +3,11 @@ import { query } from '@/lib/db.js';
 import { requirePermission } from '@/lib/permissions.js';
 import { assertProjectAccess } from '@/lib/project-access.js';
 
-// Live close-out figures derived from the project's actual data.
+// Live close-out figures derived from the project's actual data — reconciled
+// with the receiving model (budget categories, consumed/wasted/returned/rejected
+// resources, and procurement lines not yet fully received).
 async function computeSummary(projectId) {
-  const [cost, funding, issues, blockers, materials, assets] = await Promise.all([
+  const [cost, funding, issues, blockers, materials, assets, budget, byCat, resTotals, incoming, notReceived] = await Promise.all([
     query(`SELECT COALESCE(SUM(amount),0) v FROM expenses WHERE project_id=$1`, [projectId]),
     query(`SELECT COALESCE(SUM(amount),0) v FROM funding_sources WHERE project_id=$1`, [projectId]),
     query(`SELECT count(*)::int n FROM project_issues WHERE project_id=$1 AND status<>'resolved'`, [projectId]),
@@ -16,9 +18,21 @@ async function computeSummary(projectId) {
     query(`SELECT COALESCE(json_agg(json_build_object('name',name,'returned',quantity_returned))
             FILTER (WHERE is_reusable AND quantity_returned > 0),'[]') j
            FROM resources WHERE project_id=$1`, [projectId]),
+    query(`SELECT allocated_amount, committed_amount, actual_amount, forecast_amount, status FROM project_budgets WHERE project_id=$1`, [projectId]),
+    query(`SELECT category, allocated, committed, actual, (allocated-actual) AS remaining, (allocated-forecast) AS variance
+             FROM budget_lines WHERE project_id=$1 ORDER BY category`, [projectId]),
+    query(`SELECT COALESCE(SUM(quantity_consumed),0) consumed, COALESCE(SUM(quantity_wasted),0) wasted,
+                  COALESCE(SUM(quantity_returned),0) returned, COALESCE(SUM(rejected_quantity),0) rejected
+             FROM resources WHERE project_id=$1`, [projectId]),
+    query(`SELECT count(*)::int n FROM resources WHERE project_id=$1 AND status IN ('expected','incoming','partially_available')`, [projectId]),
+    query(`SELECT count(*)::int n, COALESCE(SUM(l.remaining_quantity * l.est_unit_cost),0) value
+             FROM procurement_request_lines l JOIN procurement_requests pr ON pr.id=l.request_id
+            WHERE pr.project_id=$1 AND l.status NOT IN ('fully_received','cancelled','rejected') AND l.remaining_quantity > 0`, [projectId]),
   ]);
   const finalCost = Number(cost.rows[0].v);
   const fundingTotal = Number(funding.rows[0].v);
+  const b = budget.rows[0] || {};
+  const allocated = Number(b.allocated_amount) || 0;
   return {
     final_cost: finalCost,
     funding_total: fundingTotal,
@@ -26,6 +40,19 @@ async function computeSummary(projectId) {
     unresolved_issue_count: issues.rows[0].n + blockers.rows[0].n,
     remaining_materials: materials.rows[0].j,
     returned_assets: assets.rows[0].j,
+    // ── receiving-reconciled figures ──
+    budget: {
+      allocated, committed: Number(b.committed_amount) || 0, actual: Number(b.actual_amount) || 0,
+      forecast: Number(b.forecast_amount) || 0, remaining: allocated - finalCost,
+      variance: allocated - (Number(b.forecast_amount) || 0), status: b.status || null,
+    },
+    budget_by_category: byCat.rows,
+    resource_totals: {
+      consumed: Number(resTotals.rows[0].consumed), wasted: Number(resTotals.rows[0].wasted),
+      returned: Number(resTotals.rows[0].returned), rejected: Number(resTotals.rows[0].rejected),
+    },
+    incoming_resource_count: incoming.rows[0].n,
+    lines_not_fully_received: { count: notReceived.rows[0].n, value: Number(notReceived.rows[0].value) },
   };
 }
 

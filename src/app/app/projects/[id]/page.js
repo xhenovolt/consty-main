@@ -1787,11 +1787,48 @@ function GovernanceTab({ projectId, canEdit, currency, toast, onChanged }) {
           </div>
         )}
         <div className="grid gap-3 grid-cols-2 lg:grid-cols-4 mb-3">
-          <Stat icon={Wallet} label="Final cost" value={money(computed?.final_cost)} />
+          <Stat icon={Wallet} label="Allocated" value={money(computed?.budget?.allocated)} />
+          <Stat icon={Wallet} label="Actual spent (final cost)" value={money(computed?.final_cost)} />
+          <Stat icon={Wallet} label="Committed (open)" value={money(computed?.budget?.committed)} />
           <Stat icon={Wallet} label="Funding" value={money(computed?.funding_total)} />
+          <Stat icon={Wallet} label="Remaining" value={money(computed?.budget?.remaining)} />
           <Stat icon={Wallet} label="Profit / Loss" value={money(computed?.pnl_result)} />
           <Stat icon={AlertTriangle} label="Unresolved (issues+blockers)" value={computed?.unresolved_issue_count ?? 0} />
+          <Stat icon={Package} label="Incoming not yet received" value={computed?.incoming_resource_count ?? 0} />
         </div>
+
+        {Number(computed?.lines_not_fully_received?.count) > 0 && (
+          <div className="flex items-center gap-2 text-sm text-amber-700 dark:text-amber-300 bg-amber-50 dark:bg-amber-900/20 border border-amber-200 dark:border-amber-800 rounded-lg px-3 py-2 mb-3">
+            <AlertTriangle size={15} /> {computed.lines_not_fully_received.count} procurement line(s) not fully received — {money(computed.lines_not_fully_received.value)} still expected.
+          </div>
+        )}
+
+        {/* Material disposition + per-category budget */}
+        <div className="grid gap-3 sm:grid-cols-2 mb-3">
+          <div className="bg-card border border-border rounded-xl p-3">
+            <div className="text-xs text-muted-foreground mb-1">Material disposition</div>
+            <div className="grid grid-cols-2 gap-x-4 gap-y-0.5 text-sm">
+              <span className="text-muted-foreground">Consumed</span><span className="text-right text-foreground tabular-nums">{Number(computed?.resource_totals?.consumed || 0)}</span>
+              <span className="text-muted-foreground">Returned</span><span className="text-right text-foreground tabular-nums">{Number(computed?.resource_totals?.returned || 0)}</span>
+              <span className="text-muted-foreground">Wasted</span><span className="text-right text-foreground tabular-nums">{Number(computed?.resource_totals?.wasted || 0)}</span>
+              <span className="text-muted-foreground">Rejected</span><span className="text-right text-red-600 tabular-nums">{Number(computed?.resource_totals?.rejected || 0)}</span>
+            </div>
+          </div>
+          <div className="bg-card border border-border rounded-xl p-3">
+            <div className="text-xs text-muted-foreground mb-1">Budget by category (alloc / actual / variance)</div>
+            {(computed?.budget_by_category?.length ?? 0) === 0 ? <p className="text-sm text-muted-foreground">No categories</p> : (
+              <div className="text-sm space-y-0.5">
+                {computed.budget_by_category.map((c, i) => (
+                  <div key={i} className="flex justify-between gap-2">
+                    <span className="text-muted-foreground capitalize">{c.category}</span>
+                    <span className="tabular-nums text-foreground">{money(c.allocated)} / {money(c.actual)} / <span className={Number(c.variance) < 0 ? 'text-red-600' : ''}>{money(c.variance)}</span></span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        </div>
+
         <div className="grid gap-3 sm:grid-cols-2 mb-3">
           <div className="bg-card border border-border rounded-xl p-3">
             <div className="text-xs text-muted-foreground mb-1">Remaining materials</div>
