@@ -43,7 +43,7 @@ export async function POST(request, { params }) {
     if (!accountId) {
       accountId = (await query(`SELECT id FROM accounts ORDER BY created_at LIMIT 1`)).rows[0]?.id || null;
     }
-    if (!accountId) return NextResponse.json({ success: false, error: 'No finance account exists to record this expense. Create one in Finance → Accounts first.' }, { status: 400 });
+    if (!accountId) accountId = (await query(`INSERT INTO accounts (name, type) VALUES ('Project Cash','cash') RETURNING id`)).rows[0].id;
 
     // Category must be a budget category so it rolls into the right budget line.
     const category = BUDGET_CATEGORIES.includes(b.category) ? b.category : 'other';

@@ -75,9 +75,9 @@ export async function PATCH(request, { params }) {
         // Fallback: a request with no lines still reserves its header total.
         await query(
           `INSERT INTO commitments (project_id, work_item_id, procurement_request_id, amount, currency, status, budget_category, created_by)
-           SELECT $1::uuid,$2::uuid,$3::uuid,$4,$5,'open',COALESCE($6,'other'),$7::uuid
+           SELECT $1::uuid,$2::uuid,$3::uuid,$4::numeric,$5,'open',COALESCE($6,'other'),$7::uuid
            WHERE NOT EXISTS (SELECT 1 FROM commitments WHERE procurement_request_id=$3::uuid)
-             AND $4 > 0`,
+             AND $4::numeric > 0`,
           [id, pr.work_item_id || null, prid, pr.total_est_cost, pr.currency, pr.budget_category || null, auth.userId]);
 
         // Mark lines ordered and create EXPECTED project resources (one per line)

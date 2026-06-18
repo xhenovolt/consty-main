@@ -68,9 +68,12 @@ export async function POST(request, { params }) {
       }
     }
 
-    // Resolve an account for the actual-spend expenses (company ledger requires it).
+    // Resolve an account for the actual-spend expenses (company ledger requires
+    // it). Prefer a project funding account → any account → auto-provision one
+    // so received value is always captured as actual spend.
     let accountId = (await query(`SELECT account_id FROM funding_sources WHERE project_id=$1 AND account_id IS NOT NULL ORDER BY created_at LIMIT 1`, [id])).rows[0]?.account_id
       || (await query(`SELECT id FROM accounts ORDER BY created_at LIMIT 1`)).rows[0]?.id || null;
+    if (!accountId) accountId = (await query(`INSERT INTO accounts (name, type) VALUES ('Project Cash','cash') RETURNING id`)).rows[0].id;
 
     // Header
     const receipt = (await query(
