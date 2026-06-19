@@ -112,16 +112,17 @@ export async function POST(request) {
       { status: 201 }
     );
   } catch (error) {
+    // The inherited `issues` table doesn't exist in CONSTY (the PM domain uses
+    // project_issues). Treat a missing table as a graceful no-op so the
+    // front-end error logger never gets a 500 back.
+    if (error?.code === '42P01') {
+      return Response.json({ success: true, logged: false, message: 'Error logging is disabled' }, { status: 200 });
+    }
     console.error('[auto-log] Error:', error.message);
-
     // Even if logging fails, don't crash the frontend
     return Response.json(
-      {
-        success: false,
-        error: 'Failed to log error',
-        message: error.message,
-      },
-      { status: 500 }
+      { success: false, error: 'Failed to log error', message: error.message },
+      { status: 200 }
     );
   }
 }
