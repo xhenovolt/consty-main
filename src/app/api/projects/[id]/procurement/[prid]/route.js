@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server';
 import { query } from '@/lib/db.js';
 import { requirePermission } from '@/lib/permissions.js';
 import { assertProjectAccess } from '@/lib/project-access.js';
+import { findOrLinkResource, refreshResourceFromLine } from '@/lib/procurement-resource-sync.js';
 
 const STATUSES = ['requested','approved','ordered','received','inspected','stored','allocated','closed','rejected'];
 
@@ -84,22 +85,13 @@ export async function PATCH(request, { params }) {
         // so the Resources tab shows incoming items before anything is received.
         await query(`UPDATE procurement_request_lines SET ordered_quantity = quantity, status='ordered'
                      WHERE request_id=$1 AND status='requested'`, [prid]);
-        await query(
-          `INSERT INTO resources
-             (project_id, name, category, unit_of_measure, quantity_required, incoming_quantity, unit_cost, currency,
-              catalog_item_id, source_type, source_line_item_id, status, created_by)
-           SELECT $1::uuid, l.item_name,
-                  COALESCE(rc.category, CASE l.budget_category
-                    WHEN 'materials' THEN 'material' WHEN 'labour' THEN 'labour' WHEN 'transport' THEN 'vehicle'
-                    WHEN 'equipment' THEN 'equipment' WHEN 'permits' THEN 'permit' WHEN 'subcontractors' THEN 'subcontractor'
-                    ELSE 'material' END),
-                  l.unit, l.quantity, l.quantity, l.est_unit_cost, $2,
-                  l.catalog_item_id, 'procurement', l.id, 'incoming', $3::uuid
-           FROM procurement_request_lines l
-           LEFT JOIN resource_catalog rc ON rc.id = l.catalog_item_id
-           WHERE l.request_id = $4::uuid
-             AND NOT EXISTS (SELECT 1 FROM resources r WHERE r.source_line_item_id = l.id)`,
-          [id, pr.currency, auth.userId, prid]);
+        // Group each line into a project resource (merging same catalog/name),
+        // so the Resources tab shows incoming items — no duplicate rows.
+        const appLines = (await query(`SELECT * FROM procurement_request_lines WHERE request_id=$1`, [prid])).rows;
+        for (const l of appLines) {
+          const resId = await findOrLinkResource(id, l, auth.userId);
+          await refreshResourceFromLine(resId, l);
+        }
       } else if (b.status === 'closed') {
         await query(`UPDATE commitments SET status='settled', updated_at=now() WHERE procurement_request_id=$1 AND status='open'`, [prid]);
       } else if (b.status === 'rejected') {

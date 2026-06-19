@@ -333,6 +333,18 @@ async function main() {
     const pbg = (await client.query(`SELECT actual_amount, committed_amount FROM project_budgets WHERE project_id=$1`, [rp.id])).rows[0];
     assert(Number(pbg.actual_amount) === 1600000 && Number(pbg.committed_amount) === 2400000,
       `budget: actual=1.6M (received), committed=2.4M (remaining) (got a=${pbg.actual_amount} c=${pbg.committed_amount})`);
+
+    // ── Procurement→Resource grouping (no double entry) ───────────────
+    const { rows: [gp] } = await client.query(`INSERT INTO projects (code,name,status,created_by) VALUES ($1,'Grp','active',$2) RETURNING id`, [`GRP-${Date.now()}`, uid]);
+    await client.query(`INSERT INTO resources (project_id,name,category,unit_of_measure,quantity_available,source_type) VALUES ($1,'Cement','material','bags',65,'manual')`, [gp.id]);
+    const { rows: [greq] } = await client.query(`INSERT INTO procurement_requests (project_id,title,budget_category,status) VALUES ($1,'M','materials','requested') RETURNING id`, [gp.id]);
+    const { rows: [gl] } = await client.query(`INSERT INTO procurement_request_lines (request_id,item_name,quantity,unit,est_unit_cost,budget_category) VALUES ($1,'cement',100,'bags',40000,'materials') RETURNING id`, [greq.id]);
+    // findOrLinkResource lookup: procured 'cement' must match the manual 'Cement' (case-insensitive, name+category)
+    const match = (await client.query(`SELECT id FROM resources WHERE project_id=$1 AND lower(name)=lower($2) AND category='material'`, [gp.id, gl.item_name || 'cement'])).rows;
+    assert(match.length === 1, `grouping: procured 'cement' matches existing manual 'Cement' (got ${match.length})`);
+    await client.query(`UPDATE resources SET source_line_item_id=$1 WHERE id=$2`, [gl.id, match[0].id]);
+    const dupes = (await client.query(`SELECT count(*)::int n FROM resources WHERE project_id=$1 AND lower(name)='cement'`, [gp.id])).rows[0].n;
+    assert(dupes === 1, `grouping: still ONE cement resource — no duplicate (got ${dupes})`);
   } finally {
     await client.query('ROLLBACK'); // nothing persists
   }

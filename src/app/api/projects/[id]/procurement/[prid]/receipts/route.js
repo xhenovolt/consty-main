@@ -2,15 +2,10 @@ import { NextResponse } from 'next/server';
 import { query } from '@/lib/db.js';
 import { requirePermission } from '@/lib/permissions.js';
 import { assertProjectAccess } from '@/lib/project-access.js';
+import { findOrLinkResource, refreshResourceFromLine } from '@/lib/procurement-resource-sync.js';
 
 const INSPECTION = ['pending', 'accepted', 'partially_accepted', 'rejected'];
 
-function resourceStatus(required, available, incoming) {
-  if (available > 0 && available >= required) return 'available';
-  if (available > 0) return 'partially_available';
-  if (incoming > 0) return 'incoming';
-  return 'expected';
-}
 function lineStatus(quantity, received, rejected) {
   if (received + rejected >= quantity) return received > 0 ? 'fully_received' : 'rejected';
   if (received > 0 || rejected > 0) return 'partially_received';
@@ -99,20 +94,15 @@ export async function POST(request, { params }) {
         `UPDATE procurement_request_lines SET received_quantity=$1, rejected_quantity=$2, actual_unit_cost=COALESCE($3, actual_unit_cost), status=$4
          WHERE id=$5`, [newReceived, newRejected, rl.actual_unit_cost ?? null, lStatus, l.id]);
 
-      // Sync the linked project resource (created at approval).
-      const required = Number(l.quantity);
-      const incoming = Math.max(required - newReceived - newRejected, 0);
+      // Sync into a project resource — grouping with any same catalog/name row
+      // (manual or procured), creating one if none exists. Received qty adds to
+      // available; incoming/rejected/status are refreshed from the line.
+      const resId = await findOrLinkResource(id, l, auth.userId);
       await query(
-        `UPDATE resources SET
-           quantity_available = quantity_available + $1,
-           incoming_quantity = $2,
-           rejected_quantity = rejected_quantity + $3,
-           storage_location = COALESCE($4, storage_location),
-           status = $5,
-           updated_at = now()
-         WHERE source_line_item_id = $6`,
-        [qr, incoming, qj, rl.storage_location || null,
-         resourceStatus(required, (await currentAvailable(l.id)) + qr, incoming), l.id]);
+        `UPDATE resources SET quantity_available = quantity_available + $1,
+           storage_location = COALESCE($2, storage_location), updated_at = now() WHERE id = $3`,
+        [qr, rl.storage_location || null, resId]);
+      await refreshResourceFromLine(resId, { ...l, received_quantity: newReceived, rejected_quantity: newRejected });
 
       // Budget: convert only the accepted received value into actual spend.
       const acceptedValue = qr * unitCost;
@@ -147,10 +137,4 @@ export async function POST(request, { params }) {
     console.error('[GoodsReceipt] POST error:', error);
     return NextResponse.json({ success: false, error: 'Failed to record receipt' }, { status: 500 });
   }
-}
-
-// Helper: current available qty on the resource linked to a procurement line.
-async function currentAvailable(lineId) {
-  const r = (await query(`SELECT quantity_available FROM resources WHERE source_line_item_id=$1`, [lineId])).rows[0];
-  return r ? Number(r.quantity_available) : 0;
 }
